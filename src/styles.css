@@ -1,0 +1,69 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@theme inline {
+  --radius-sm: 0px; --radius-md: 0px; --radius-lg: 0px; --radius-xl: 0px;
+  --color-gb-0: var(--gb-0);
+  --color-gb-1: var(--gb-1);
+  --color-gb-2: var(--gb-2);
+  --color-gb-3: var(--gb-3);
+  --color-shell: var(--shell);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-border: var(--border);
+  --font-pixel: "Press Start 2P", monospace;
+  --animate-gb-idle: gb-idle 1.1s steps(1, end) infinite;
+  --animate-gb-grass: gb-grass 0.8s steps(1, end) infinite;
+  --animate-gb-grass-alt: gb-grass 0.8s steps(1, end) 0.4s infinite;
+  --animate-gb-press: gb-press 1s steps(1, end) infinite;
+}
+
+:root {
+  --gb-0: oklch(0.93 0.11 128);
+  --gb-1: oklch(0.78 0.13 137);
+  --gb-2: oklch(0.53 0.10 146);
+  --gb-3: oklch(0.28 0.06 152);
+  --shell: oklch(0.35 0.02 150);
+  --background: var(--gb-0);
+  --foreground: var(--gb-3);
+  --border: var(--gb-3);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body {
+    background-color: var(--shell);
+    color: var(--color-foreground);
+    font-family: var(--font-pixel);
+    -webkit-font-smoothing: none;
+  }
+  img { image-rendering: pixelated; }
+}
+
+@utility pixel-box {
+  border: 4px solid var(--gb-3);
+  box-shadow: inset 0 0 0 4px var(--gb-0), 4px 4px 0 0 var(--gb-3);
+}
+
+@utility screen-scanlines {
+  &::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--gb-3) 14%, transparent) 0px,
+      color-mix(in oklab, var(--gb-3) 14%, transparent) 1px,
+      transparent 1px, transparent 3px);
+  }
+}
+
+@utility dither {
+  background-image:
+    linear-gradient(45deg, var(--gb-1) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--gb-1) 25%, transparent 25%);
+  background-size: 4px 4px;
+}
+
+@keyframes gb-idle { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-3px)} }
+@keyframes gb-grass { 0%,100%{transform:translateX(0) scaleY(1)} 50%{transform:translateX(2px) scaleY(.88)} }
+@keyframes gb-press { 0%,49%{opacity:1} 50%,100%{opacity:0} }
