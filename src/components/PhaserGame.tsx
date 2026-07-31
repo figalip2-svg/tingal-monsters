@@ -5,7 +5,7 @@ import type Phaser from 'phaser';
 import { OverworldScene } from '@/game/scenes/OverworldScene';
 
 type PhaserGameProps = {
-  phase: 'title' | 'starter' | 'overworld' | 'battle';
+  phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle';
   selectedStarter: string;
   onDialogue: (message: string) => void;
   onEncounter: (enemyName: string) => void;
@@ -90,7 +90,7 @@ export function PhaserGame({ phase, selectedStarter, onDialogue, onEncounter }: 
     };
   }, [phaserModule, phase, selectedStarter, onDialogue, onEncounter]);
 
-  if (phase === 'title' || phase === 'starter') {
+  if (phase === 'title' || phase === 'starter' || phase === 'encounter') {
     return null;
   }
 

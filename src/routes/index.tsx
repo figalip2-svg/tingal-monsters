@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { PixelArt } from '@/components/PixelArt';
 import { PhaserGame } from '@/components/PhaserGame';
 import { critter, trainer, palette } from '@/components/monster-sprites';
+import { foes } from '@/components/foes';
 import { readSaveData, writeSaveData } from '@/lib/storage';
 import { rootRoute } from './__root';
 
@@ -22,7 +23,7 @@ export const Route = createRoute({
   component: TitleScreen,
 });
 
-type ScreenPhase = 'title' | 'starter' | 'overworld' | 'battle';
+type ScreenPhase = 'title' | 'starter' | 'overworld' | 'encounter' | 'battle';
 type StarterName = 'Pyroshell' | 'Aquataur' | 'Florisaur';
 type BattleView = 'menu' | 'moves';
 
@@ -37,6 +38,9 @@ type MonsterState = {
   xp: number;
   xpToNext: number;
   moves: Array<{ name: string; power: number }>;
+  sprite?: string[];
+  scale?: number;
+  kind?: string;
 };
 
 type BattleState = {
@@ -93,18 +97,21 @@ function createStarterMonster(name: StarterName): MonsterState {
 }
 
 function createEnemyMonster(name: string): MonsterState {
+  const foe = foes.find((entry) => entry.name === name) ?? foes[0];
   const base = {
-    hp: 18,
-    maxHp: 18,
-    attack: 6,
-    defense: 4,
-    speed: 3,
-    level: 3,
+    hp: foe.maxHp,
+    maxHp: foe.maxHp,
+    attack: foe.attack,
+    defense: foe.defense,
+    speed: foe.speed,
+    level: foe.level,
     xp: 0,
     xpToNext: 18,
-    moves: [{ name: 'MUD', power: 4 }],
+    sprite: foe.sprite,
+    scale: foe.scale,
+    kind: foe.kind,
   };
-  return { name, ...base, moves: [{ name: 'PUNCTURE', power: 4 }, { name: 'RUST', power: 3 }] };
+  return { name: foe.name, ...base, moves: [{ name: 'PUNCTURE', power: 4 }, { name: 'RUST', power: 3 }] };
 }
 
 function Grass() {
@@ -161,6 +168,7 @@ function TitleScreen() {
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [battleFlash, setBattleFlash] = useState(false);
   const [battleLog, setBattleLog] = useState('');
+  const [encounterName, setEncounterName] = useState('');
 
   useEffect(() => {
     const saved = readSaveData();
@@ -199,7 +207,9 @@ function TitleScreen() {
   }, []);
 
   const handleEncounter = useCallback((enemyName: string) => {
-    startBattle(enemyName);
+    setEncounterName(enemyName);
+    setPhase('encounter');
+    window.setTimeout(() => startBattle(enemyName), 720);
   }, [startBattle]);
 
   const selectStarter = useCallback((starter: StarterName) => {
@@ -454,6 +464,9 @@ function TitleScreen() {
                   <p className="font-pixel text-[9px] text-gb-3">{battleState.enemy.name}</p>
                   <p className="mt-1 font-pixel text-[7px] text-gb-2">LV {battleState.enemy.level}</p>
                 </div>
+                <div className={battleState.enemy.hp === 0 ? 'animate-gb-press opacity-25' : 'animate-gb-idle'}>
+                  {battleState.enemy.sprite && <PixelArt rows={battleState.enemy.sprite} palette={palette} scale={battleState.enemy.scale ?? 5} />}
+                </div>
                 <div className="w-[120px]">
                   <div className="h-3 border border-gb-3 bg-gb-1">
                     <div className="h-full bg-gb-3 transition-all duration-300" style={{ width: `${(battleState.enemy.hp / battleState.enemy.maxHp) * 100}%` }} />
@@ -465,6 +478,9 @@ function TitleScreen() {
 
             <div className="mt-4 pixel-box bg-gb-0 p-3">
               <div className="flex items-end justify-between">
+                <div className="animate-gb-idle">
+                  <PixelArt rows={critter} palette={palette} scale={5} />
+                </div>
                 <div>
                   <p className="font-pixel text-[9px] text-gb-3">{battleState.player.name}</p>
                   <p className="mt-1 font-pixel text-[7px] text-gb-2">LV {battleState.player.level}</p>
@@ -504,11 +520,26 @@ function TitleScreen() {
     </main>
   ) : null;
 
+  const encounterContent = (
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
+      <div className="w-full max-w-[390px]">
+        <div className="screen-scanlines relative flex min-h-[720px] flex-col items-center justify-center overflow-hidden border-8 border-gb-3 bg-gb-0">
+          <div className="animate-gb-grass-alt">
+            <Grass />
+          </div>
+          <p className="mt-8 animate-gb-press font-pixel text-[10px] text-gb-3">RUSTLING GRASS...</p>
+          <p className="mt-3 font-pixel text-[7px] text-gb-2">{encounterName} APPROACHES</p>
+        </div>
+      </div>
+    </main>
+  );
+
   return (
     <>
       {phase === 'title' && titleContent}
       {phase === 'starter' && starterContent}
       {phase === 'overworld' && overworldContent}
+      {phase === 'encounter' && encounterContent}
       {phase === 'battle' && battleContent}
       {battleFlash && <div className="pointer-events-none fixed inset-0 z-50 bg-white/90" />}
     </>
