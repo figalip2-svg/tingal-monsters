@@ -249,11 +249,29 @@ export class OverworldScene extends Phaser.Scene {
       this.onDialogue?.('TRAINER MIRA challenges you to a battle!');
       this.onTrainerBattle?.('TRAINER_MIRA');
     } else if (nextX === this.npcTile.x && nextY === this.npcTile.y) this.onDialogue?.('Mossy Guide: Tall grass hides wild Tingals. Take care on Route 1.');
-    else if (tile === 'g' && Math.random() < ENCOUNTER_RATE) {
-      const encounters = ['EMBERFANG', 'GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'];
-      this.onEncounter?.(encounters[Math.floor(Math.random() * encounters.length)]);
+    // Forest trainer trigger
+    else if (this.mapId === 'forest' && nextX === 6 && nextY === 4 && !this.trainerDefeated) {
+      this.onDialogue?.('RANGER: The forest is my domain — battle me!');
+      this.onTrainerBattle?.('TRAINER_RANGER');
     }
-  }
+    else if (tile === 'g') {
+      // Per-map encounter rates and pools
+      const rate = this.mapId === 'forest' ? 0.22 : ENCOUNTER_RATE;
+      if (Math.random() < rate) {
+        const mapEncounters: Record<string, string[]> = {
+          route: ['EMBERFANG', 'GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'],
+          grove: ['GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'],
+          forest: ['MOSSBUG', 'LEAFFOX', 'GLIMMOTH', 'RIPPLEFIN'],
+        };
+        const list = mapEncounters[this.mapId] ?? ['EMBERFANG', 'GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'];
+        // Small rare chance in forest for a tougher foe
+        if (this.mapId === 'forest' && Math.random() < 0.06) {
+          this.onEncounter?.('CRAGHORN');
+        } else {
+          this.onEncounter?.(list[Math.floor(Math.random() * list.length)]);
+        }
+      }
+    }  }
 
   private updateCamera() {
     const camera = this.cameras.main;

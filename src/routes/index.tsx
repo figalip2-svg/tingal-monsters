@@ -207,6 +207,7 @@ const LEARNSETS: Record<string, Array<{ level: number; move: MoveState }>> = {
 const TRAINER_TEAMS: Record<string, string[]> = {
   TRAINER_RUNE: ['RIPPLEFIN', 'CRAGHORN'],
   TRAINER_MIRA: ['EMBERFANG', 'GLIMMOTH'],
+  TRAINER_RANGER: ['MOSSBUG', 'LEAFFOX'],
 };
 
 
