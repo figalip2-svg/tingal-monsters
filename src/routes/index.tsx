@@ -61,6 +61,7 @@ type RewardState = {
   coins: number;
   level: number;
   leveledUp: boolean;
+  learnedMoves?: string[];
 };
 
 const MENU = [
@@ -186,6 +187,23 @@ function typeMultiplier(moveType: string, targetKind: string | undefined) {
   return 1;
 }
 
+// Simple learnset table: species name -> list of moves learned at given level.
+const LEARNSETS: Record<string, Array<{ level: number; move: MoveState }>> = {
+  Pyroshell: [
+    { level: 6, move: { name: 'FIRE SPIN', power: 8, type: 'FIRE', pp: 10, maxPp: 10 } },
+    { level: 10, move: { name: 'LAVA BASH', power: 12, type: 'FIRE', pp: 6, maxPp: 6 } },
+  ],
+  Aquataur: [
+    { level: 6, move: { name: 'WATER JET', power: 8, type: 'WATER', pp: 10, maxPp: 10 } },
+    { level: 10, move: { name: 'TIDAL CRASH', power: 12, type: 'WATER', pp: 6, maxPp: 6 } },
+  ],
+  Florisaur: [
+    { level: 6, move: { name: 'VINE WHIP', power: 8, type: 'GRASS', pp: 10, maxPp: 10 } },
+    { level: 10, move: { name: 'SEED STORM', power: 12, type: 'GRASS', pp: 6, maxPp: 6 } },
+  ],
+};
+
+
 function Grass() {
   const blades = Array.from({ length: 32 });
   return (
@@ -205,6 +223,50 @@ function Grass() {
       </div>
       <div className="dither h-6 w-full bg-gb-2" />
       <div className="h-2 w-full bg-gb-3" />
+    </div>
+  );
+}
+
+function StatBar({ value, max, fillClassName = 'bg-gb-3' }: { value: number; max: number; fillClassName?: string }) {
+  const ratio = Math.max(0, Math.min(100, (value / Math.max(1, max)) * 100));
+  return (
+    <div className="h-2 border border-gb-3 bg-gb-1">
+      <div className={`h-full ${fillClassName}`} style={{ width: `${ratio}%` }} />
+    </div>
+  );
+}
+
+function MonsterSummary({ monster, compact = false, showXp = false }: { monster: MonsterState; compact?: boolean; showXp?: boolean }) {
+  const scale = compact ? 2.2 : 3.2;
+  return (
+    <div className={`pixel-box bg-gb-0 ${compact ? 'p-2' : 'p-3'}`}>
+      <div className="flex items-center gap-2">
+        <div className="border-2 border-gb-3 bg-gb-1 p-1">
+          <PixelArt rows={monster.sprite ?? critter} palette={palette} scale={scale} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className={`font-pixel ${compact ? 'text-[7px]' : 'text-[8px]'} text-gb-3`}>{monster.name}</p>
+            <p className={`font-pixel ${compact ? 'text-[6px]' : 'text-[7px]'} text-gb-2`}>LV {monster.level}</p>
+          </div>
+          <div className="mt-2">
+            <div className="flex items-center justify-between font-pixel text-[6px] text-gb-2">
+              <span>HP</span>
+              <span>{monster.hp}/{monster.maxHp}</span>
+            </div>
+            <StatBar value={monster.hp} max={monster.maxHp} />
+          </div>
+          {showXp && (
+            <div className="mt-2">
+              <div className="flex items-center justify-between font-pixel text-[6px] text-gb-2">
+                <span>EXP</span>
+                <span>{monster.xp}/{monster.xpToNext}</span>
+              </div>
+              <StatBar value={monster.xp} max={monster.xpToNext} fillClassName="bg-gb-2" />
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -254,6 +316,8 @@ function TitleScreen() {
   const [returnPhase, setReturnPhase] = useState<ScreenPhase>('title');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [trainerDefeated, setTrainerDefeated] = useState(false);
+  // Pending learn modal state when a monster attempts to learn a move but already has 4 moves
+  const [pendingLearn, setPendingLearn] = useState<{ partyIndex: number; move: MoveState } | null>(null);
 
   useEffect(() => {
     const saved = readSaveData();
@@ -320,8 +384,9 @@ function TitleScreen() {
 
   // Level-up helper: given a monster and XP gain, return updated monster and count of levels gained.
   const levelUpMonster = useCallback((mon: MonsterState, xpGain: number) => {
+    const originalLevel = mon.level ?? 1;
     const nextXpTotal = (mon.xp ?? 0) + xpGain;
-    let level = mon.level ?? 1;
+    let level = originalLevel;
     let remaining = nextXpTotal;
     let levelUps = 0;
     while (remaining >= level * 18) {
@@ -336,6 +401,22 @@ function TitleScreen() {
     // Heal a little on level up (but do not exceed new maxHp)
     const nextHp = Math.min(nextMaxHp, (mon.hp ?? mon.maxHp) + 2 * levelUps);
 
+    // Learnset processing: if monster species has learnset entries at levels crossed, add moves (if space)
+    const learnEntries = (LEARNSETS[mon.name ?? ''] ?? []).filter((e) => e.level > originalLevel && e.level <= level);
+    const learnedMoves: string[] = [];
+    const skippedMoves: string[] = [];
+    const nextMoves = mon.moves ? mon.moves.map((m) => ({ ...m })) : [];
+    for (const entry of learnEntries) {
+      const move = { ...entry.move } as MoveState;
+      if (nextMoves.length < 4) {
+        nextMoves.push(move);
+        learnedMoves.push(move.name);
+      } else {
+        // no room: skip learning for now
+        skippedMoves.push(move.name);
+      }
+    }
+
     return {
       ...mon,
       level,
@@ -346,7 +427,10 @@ function TitleScreen() {
       xp: remaining,
       xpToNext: level * 18,
       leveled: levelUps,
-    } as MonsterState & { leveled: number };
+      moves: nextMoves,
+      learnedMoves,
+      skippedMoves,
+    } as MonsterState & { leveled: number; learnedMoves?: string[]; skippedMoves?: string[] };
   }, []);
 
   const startBattle = useCallback((enemyName: string, canCapture = true) => {
@@ -677,7 +761,22 @@ function TitleScreen() {
         coins: coinReward,
         level: updatedActive.level,
         leveledUp: updatedActive.leveled > 0,
+        learnedMoves: (updatedActive as any).learnedMoves ?? undefined,
       });
+
+      // If a move was skipped because the monster had 4 moves, offer replacement UI
+      const skipped = (updatedActive as any).skippedMoves as string[] | undefined;
+      if (skipped && skipped.length > 0) {
+        const skipName = skipped[0];
+        const learnEntry = (LEARNSETS[updatedActive.name ?? ''] ?? []).find((e) => e.move.name === skipName);
+        if (learnEntry) {
+          // Defer showing the modal until reward screen is visible
+          setTimeout(() => {
+            setPendingLearn({ partyIndex: activePartyIndex, move: { ...learnEntry.move } });
+            setDialogue(`${updatedActive.name} can learn ${learnEntry.move.name}! Choose a move to forget or skip.`);
+          }, 300);
+        }
+      }
 
       if (!battleState.canCapture) {
         setTrainerDefeated(true);
@@ -764,12 +863,35 @@ function TitleScreen() {
 
   const continueAfterReward = useCallback(() => {
     if (!reward) return;
+    // If a pendingLearn exists, do not auto-continue — require the player to decide
+    if (pendingLearn) return;
     setReward(null);
     setBattleState(null);
     setBattleLog('');
     setPhase('overworld');
     setDialogue(`${battleState?.player.name ?? selectedStarter} rests after the victory. The path continues.`);
-  }, [battleState, reward, selectedStarter]);
+  }, [battleState, reward, selectedStarter, pendingLearn]);
+
+  const replaceMoveWith = useCallback((replaceIdx: number) => {
+    if (!pendingLearn) return;
+    const { partyIndex, move } = pendingLearn;
+    const old = party[partyIndex];
+    if (!old) return;
+    const oldMoveName = old.moves[replaceIdx]?.name ?? 'a move';
+    const nextParty = party.map((m, idx) => {
+      if (idx !== partyIndex) return m;
+      const nextMoves = m.moves.map((mv, mi) => mi === replaceIdx ? { ...move } : mv);
+      return { ...m, moves: nextMoves };
+    });
+    persistParty(nextParty, activePartyIndex);
+    setPendingLearn(null);
+    setDialogue(`${old.name} forgot ${oldMoveName} and learned ${move.name}!`);
+  }, [pendingLearn, party, persistParty, activePartyIndex]);
+
+  const skipLearning = useCallback(() => {
+    setPendingLearn(null);
+    setDialogue('You decided not to learn the new move.');
+  }, []);
 
   const purchaseItem = useCallback((item: 'potion' | 'capture') => {
     const price = item === 'potion' ? 8 : 12;
@@ -918,18 +1040,23 @@ function TitleScreen() {
     <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
       <div className="w-full max-w-[390px]">
         <div className="screen-scanlines relative flex min-h-[720px] flex-col overflow-hidden border-8 border-gb-3 bg-gb-0 sm:min-h-[780px]">
-          <header className="flex items-center justify-between px-4 pt-4">
-            <div>
-              <p className="font-pixel text-[10px] text-gb-3">{mapName}</p>
-              <p className="mt-1 font-pixel text-[7px] text-gb-2">{selectedStarter.toUpperCase()} · {coins} C</p>
+          <header className="px-4 pt-4">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <MonsterSummary monster={playerMonster} compact showXp={false} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <button type="button" className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[7px] text-gb-3" onClick={() => { setReturnPhase('overworld'); setPhase('party'); }}>
+                  PARTY
+                </button>
+                <button type="button" className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[7px] text-gb-3" onClick={() => { setPhase('title'); setDialogue(''); setBattleState(null); }}>
+                  MENU
+                </button>
+              </div>
             </div>
-            <div className="flex gap-2">
-              <button type="button" className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[7px] text-gb-3" onClick={() => { setReturnPhase('overworld'); setPhase('party'); }}>
-                PARTY
-              </button>
-              <button type="button" className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[7px] text-gb-3" onClick={() => { setPhase('title'); setDialogue(''); setBattleState(null); }}>
-                MENU
-              </button>
+            <div className="mt-3 flex items-center justify-between border-t-4 border-gb-3 pt-3">
+              <p className="font-pixel text-[8px] text-gb-3">{mapName}</p>
+              <p className="font-pixel text-[7px] text-gb-2">{selectedStarter.toUpperCase()} · {coins} C</p>
             </div>
           </header>
           <section className="relative mt-3 flex flex-1 flex-col px-3">
@@ -996,17 +1123,25 @@ function TitleScreen() {
             <div className="mt-4 pixel-box bg-gb-0 p-3">
               <div className="flex items-end justify-between">
                 <div className="animate-gb-idle">
-                  <PixelArt rows={critter} palette={palette} scale={5} />
+                  <PixelArt rows={battleState.player.sprite ?? critter} palette={palette} scale={battleState.player.scale ?? 5} />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="font-pixel text-[9px] text-gb-3">{battleState.player.name}</p>
                   <p className="mt-1 font-pixel text-[7px] text-gb-2">LV {battleState.player.level}</p>
+                  <div className="mt-2 w-[120px]">
+                    <div className="flex items-center justify-between font-pixel text-[6px] text-gb-2">
+                      <span>HP</span>
+                      <span>{battleState.player.hp}/{battleState.player.maxHp}</span>
+                    </div>
+                    <StatBar value={battleState.player.hp} max={battleState.player.maxHp} />
+                  </div>
                 </div>
                 <div className="w-[120px]">
-                  <div className="h-3 border border-gb-3 bg-gb-1">
-                    <div className="h-full bg-gb-3 transition-all duration-300" style={{ width: `${(battleState.player.hp / battleState.player.maxHp) * 100}%` }} />
+                  <div className="flex items-center justify-between font-pixel text-[6px] text-gb-2">
+                    <span>EXP</span>
+                    <span>{battleState.player.xp}/{battleState.player.xpToNext}</span>
                   </div>
-                  <p className="mt-1 text-right font-pixel text-[7px] text-gb-2">{battleState.player.hp}/{battleState.player.maxHp} HP</p>
+                  <StatBar value={battleState.player.xp} max={battleState.player.xpToNext} fillClassName="bg-gb-2" />
                 </div>
               </div>
             </div>
@@ -1085,6 +1220,14 @@ function TitleScreen() {
                   LEVEL UP!<br />NOW LEVEL {reward.level}
                 </p>
               )}
+
+              {reward.learnedMoves && reward.learnedMoves.length > 0 && (
+                <div className="mt-4 border-4 border-gb-3 bg-gb-0 p-3">
+                  {reward.learnedMoves.map((m) => (
+                    <p key={m} className="font-pixel text-[8px] text-gb-3">{party[activePartyIndex]?.name ?? 'Your Tingal'} learned {m}!</p>
+                  ))}
+                </div>
+              )}
             </div>
           </section>
           <div className="px-5 pb-8">
@@ -1092,6 +1235,22 @@ function TitleScreen() {
               CONTINUE ▶
             </button>
           </div>
+
+          {pendingLearn && (
+            <div className="fixed inset-0 z-40 flex items-center justify-center">
+              <div className="absolute inset-0 bg-black/60" />
+              <div className="z-50 w-[320px] pixel-box bg-gb-0 p-4">
+                <p className="font-pixel text-[9px] text-gb-3">Learn {pendingLearn.move.name}?</p>
+                <p className="mt-2 font-pixel text-[7px] text-gb-2">Choose a move to forget from {party[pendingLearn.partyIndex]?.name}.</p>
+                <div className="mt-3 grid gap-2">
+                  {party[pendingLearn.partyIndex].moves.map((mv, i) => (
+                    <button key={mv.name} onClick={() => replaceMoveWith(i)} className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[8px] text-gb-3">Forget {mv.name}</button>
+                  ))}
+                  <button onClick={skipLearning} className="pixel-box bg-gb-0 px-2 py-2 font-pixel text-[8px] text-gb-3">Don't learn</button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </main>
@@ -1163,25 +1322,29 @@ function TitleScreen() {
             <p className="mt-3 font-pixel text-[7px] text-gb-2">YOUR ACTIVE PARTY</p>
           </header>
           <section className="flex flex-1 flex-col justify-center px-5">
-            <div className="pixel-box bg-gb-0 p-4">
-              <div className="flex items-center gap-4">
-                <PixelArt rows={critter} palette={palette} scale={5} />
-                <div className="flex-1">
-                  <p className="font-pixel text-[10px] text-gb-3">{playerMonster.name}</p>
-                  <p className="mt-2 font-pixel text-[7px] text-gb-2">LV {playerMonster.level}</p>
-                  <p className="mt-2 font-pixel text-[7px] text-gb-2">HP {playerMonster.hp}/{playerMonster.maxHp}</p>
-                </div>
-              </div>
-            </div>
+            <MonsterSummary monster={playerMonster} showXp />
             <div className="mt-4 grid gap-2">
               {party.map((monster, index) => (
                 <button type="button" key={`${monster.name}-${index}`} onClick={() => selectPartyMember(index)} className={`border-4 bg-gb-0 p-3 text-left ${index === activePartyIndex ? 'border-gb-3' : 'border-gb-1'}`}>
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-pixel text-[8px] text-gb-3">{index === activePartyIndex ? '▶ ' : ''}{index + 1}. {monster.name}</span>
-                    <span className="font-pixel text-[7px] text-gb-2">LV {monster.level}</span>
+                  <div className="flex items-center gap-2">
+                    <div className="border-2 border-gb-3 bg-gb-1 p-1">
+                      <PixelArt rows={monster.sprite ?? critter} palette={palette} scale={2.2} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-pixel text-[8px] text-gb-3">{index === activePartyIndex ? '▶ ' : ''}{index + 1}. {monster.name}</span>
+                        <span className="font-pixel text-[7px] text-gb-2">LV {monster.level}</span>
+                      </div>
+                      <div className="mt-2">
+                        <div className="flex items-center justify-between font-pixel text-[6px] text-gb-2">
+                          <span>HP</span>
+                          <span>{monster.hp}/{monster.maxHp}</span>
+                        </div>
+                        <StatBar value={monster.hp} max={monster.maxHp} />
+                      </div>
+                      <p className="mt-2 font-pixel text-[6px] text-gb-2">{monster.moves.map((move) => `${move.name} ${move.pp}/${move.maxPp}`).join(' · ')}</p>
+                    </div>
                   </div>
-                  <p className="mt-2 font-pixel text-[7px] text-gb-2">HP {monster.hp}/{monster.maxHp}</p>
-                  <p className="mt-1 font-pixel text-[6px] text-gb-2">{monster.moves.map((move) => `${move.name} ${move.pp}/${move.maxPp}`).join(' · ')}</p>
                 </button>
               ))}
             </div>
