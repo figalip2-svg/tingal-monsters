@@ -4,7 +4,7 @@ import { trainer } from '@/components/monster-sprites';
 
 const TILE_SIZE = 28;
 const CHARACTER_SCALE = 1.5;
-type MapId = 'town' | 'route' | 'grove';
+type MapId = 'town' | 'route' | 'grove' | 'forest';
 type MapDefinition = { tiles: string[]; width: number; height: number };
 
 const SIMPLE_MAP = (grassTiles: Array<[number, number]>, obstacles: Array<[number, number]>): MapDefinition => {
@@ -23,12 +23,15 @@ const MAPS: Record<MapId, MapDefinition> = {
   town: { tiles: MAP, width: WIDTH, height: HEIGHT },
   route: SIMPLE_MAP([[3, 3], [4, 3], [5, 3], [3, 4], [4, 4], [5, 4], [14, 14], [15, 14], [16, 14], [14, 15], [15, 15], [16, 15]], [[8, 6], [9, 6], [10, 6], [8, 7], [10, 7], [8, 8], [9, 8], [10, 8]]),
   grove: SIMPLE_MAP([[4, 12], [5, 12], [6, 12], [7, 12], [4, 13], [5, 13], [6, 13], [7, 13], [14, 4], [15, 4], [14, 5], [15, 5]], [[3, 5], [4, 5], [3, 6], [4, 6], [16, 8], [17, 8], [16, 9], [17, 9]]),
+  // New forest map: denser grass, a few obstacles, slightly higher encounter density visually
+  forest: SIMPLE_MAP([[5,5],[6,5],[7,5],[8,6],[9,6],[10,6],[5,7],[6,7],[7,7],[12,12],[13,12]], [[9,9],[10,9],[11,9],[9,10],[11,10]]),
 };
 
 const MAP_NAMES: Record<MapId, string> = {
   town: 'VERDANT TOWN',
   route: 'SUNLIT ROUTE',
   grove: 'MOSSHEART GROVE',
+  forest: 'ECHOING FOREST',
 };
 
 const COLORS = {
@@ -79,7 +82,13 @@ export class OverworldScene extends Phaser.Scene {
     const savedY = this.registry.get('spawnY') as number | undefined;
     this.playerTile = savedX !== undefined && savedY !== undefined
       ? { x: savedX, y: savedY }
-      : this.mapId === 'town' ? { x: 1, y: 1 } : { x: this.mapId === 'route' ? 1 : this.map.width - 2, y: 10 };
+      : this.mapId === 'town'
+        ? { x: 1, y: 1 }
+        : this.mapId === 'route'
+          ? { x: 1, y: 10 }
+          : this.mapId === 'grove'
+            ? { x: this.map.width - 2, y: 10 }
+            : { x: Math.floor(this.map.width / 2), y: this.map.height - 3 };
     this.npcTile = this.mapId === 'town' ? { x: 8, y: 8 } : { x: 10, y: 10 };
     this.onMapChange?.(MAP_NAMES[this.mapId]);
     this.onPlayerPosition?.(this.mapId, this.playerTile.x, this.playerTile.y);
@@ -194,6 +203,12 @@ export class OverworldScene extends Phaser.Scene {
   private tryMove(dx: number, dy: number) {
     const nextX = this.playerTile.x + dx;
     const nextY = this.playerTile.y + dy;
+    // Enter forest if moving off the top edge of the route
+    if (nextY < 0 && this.mapId === 'route') {
+      this.changeMap('forest', Math.floor(MAPS.forest.width / 2));
+      return;
+    }
+
     if (nextY === 10 && nextX < 0) {
       this.changeMap(this.mapId === 'grove' ? 'route' : 'town', MAPS[this.mapId === 'town' ? 'route' : 'town'].width - 2);
       return;
