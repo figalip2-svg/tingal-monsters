@@ -26,6 +26,13 @@ const routeMap = SIMPLE_MAP(
 routeMap.tiles[0] = 'tttttttggggttttttttt';
 routeMap.tiles[1] = 'ttttttt...s...ttttt';
 routeMap.tiles[2] = 'ttttttt.......ttttt';
+routeMap.tiles[3] = 'ttttttt.......ttttt';
+routeMap.tiles[4] = 'ttttttt.......ttttt';
+routeMap.tiles[5] = 'ttttttt.......ttttt';
+routeMap.tiles[6] = 'ttttttt.......ttttt';
+routeMap.tiles[7] = 'ttttttt.......ttttt';
+routeMap.tiles[8] = 'ttttttt.......ttttt';
+routeMap.tiles[9] = 'ttttttt.......ttttt';
 
 const forestMap = SIMPLE_MAP(
   [[5,5],[6,5],[7,5],[8,6],[9,6],[10,6],[5,7],[6,7],[7,7],[12,12],[13,12]],
