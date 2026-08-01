@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { ENCOUNTER_RATE, HEIGHT, MAP, SIGNS, SOLID, WIDTH } from '@/components/overworld';
+import { trainer } from '@/components/monster-sprites';
 
-const TILE_SIZE = 16;
+const TILE_SIZE = 28;
+const CHARACTER_SCALE = 1.5;
 type MapId = 'town' | 'route' | 'grove';
 type MapDefinition = { tiles: string[]; width: number; height: number };
 
@@ -38,13 +40,13 @@ const COLORS = {
   accent: 0x2f4f3f,
 };
 
-function isSolidTile(tile: string, mapId: MapId) {
+function isSolidTile(tile: string, mapId: MapId, x: number, y: number, width: number) {
+  if (y === 10 && (x === 0 || x === width - 1)) return false;
   return mapId === 'town' ? SOLID.has(tile as never) : tile === 't';
 }
 
 export class OverworldScene extends Phaser.Scene {
-  private player!: Phaser.GameObjects.Rectangle;
-  private npc!: Phaser.GameObjects.Rectangle;
+  private player!: Phaser.GameObjects.Container;
   private playerTile = { x: 1, y: 1 };
   private npcTile = { x: 8, y: 8 };
   private mapId: MapId = 'town';
@@ -53,6 +55,10 @@ export class OverworldScene extends Phaser.Scene {
   private onEncounter?: (enemyName: string) => void;
   private onMapChange?: (mapName: string) => void;
   private onPlayerPosition?: (mapId: MapId, x: number, y: number) => void;
+  private onHeal?: () => void;
+  private onShop?: () => void;
+  private onTrainerBattle?: (enemyName: string) => void;
+  private trainerDefeated = false;
 
   constructor() {
     super({ key: 'Overworld' });
@@ -63,6 +69,10 @@ export class OverworldScene extends Phaser.Scene {
     this.onEncounter = this.registry.get('onEncounter');
     this.onMapChange = this.registry.get('onMapChange');
     this.onPlayerPosition = this.registry.get('onPlayerPosition');
+    this.onHeal = this.registry.get('onHeal');
+    this.onShop = this.registry.get('onShop');
+    this.onTrainerBattle = this.registry.get('onTrainerBattle');
+    this.trainerDefeated = this.registry.get('trainerDefeated') ?? false;
     this.mapId = this.registry.get('mapId') ?? 'town';
     this.map = MAPS[this.mapId];
     const savedX = this.registry.get('spawnX') as number | undefined;
@@ -81,14 +91,16 @@ export class OverworldScene extends Phaser.Scene {
       }
     }
 
-    this.player = this.add.rectangle(this.playerTile.x * TILE_SIZE, this.playerTile.y * TILE_SIZE, 12, 12, COLORS.dark).setOrigin(0, 0);
-    this.player.setStrokeStyle(2, COLORS.base);
-    this.npc = this.add.rectangle(this.npcTile.x * TILE_SIZE, this.npcTile.y * TILE_SIZE, 12, 12, COLORS.mid).setOrigin(0, 0);
-    this.npc.setStrokeStyle(2, COLORS.base);
+    this.player = this.createCharacter(this.playerTile.x, this.playerTile.y, COLORS.dark, COLORS.mid);
+    this.createCharacter(this.npcTile.x, this.npcTile.y, COLORS.mid, COLORS.dark);
+    if (this.mapId === 'town') {
+      this.createCharacter(6, 7, COLORS.dark, COLORS.light);
+      this.createCharacter(10, 7, COLORS.accent, COLORS.light);
+    }
 
     this.cameras.main.setBounds(0, 0, this.map.width * TILE_SIZE, this.map.height * TILE_SIZE);
-    this.cameras.main.startFollow(this.player, true, 0.08, 0.08);
     this.cameras.main.setRoundPixels(true);
+    this.updateCamera();
     this.input.keyboard?.on('keydown-LEFT', () => this.tryMove(-1, 0));
     this.input.keyboard?.on('keydown-RIGHT', () => this.tryMove(1, 0));
     this.input.keyboard?.on('keydown-UP', () => this.tryMove(0, -1));
@@ -109,9 +121,14 @@ export class OverworldScene extends Phaser.Scene {
     graphics.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
     if (tile === 't') {
       graphics.fillStyle(COLORS.accent, 1);
-      graphics.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+      graphics.fillRect(px + 2, py + 2, 12, 8);
+      graphics.fillRect(px + 4, py + 10, 8, 4);
+      graphics.fillStyle(COLORS.mid, 1);
+      graphics.fillRect(px + 1, py + 5, 4, 5);
+      graphics.fillRect(px + 11, py + 4, 4, 6);
       graphics.fillStyle(COLORS.light, 1);
-      graphics.fillRect(px + 4, py + 4, 3, 3);
+      graphics.fillRect(px + 4, py + 3, 3, 3);
+      graphics.fillRect(px + 9, py + 7, 3, 3);
     } else if (tile === 'g') {
       graphics.fillStyle(COLORS.mid, 1);
       graphics.fillRect(px + 3, py + 7, 2, 6);
@@ -129,7 +146,38 @@ export class OverworldScene extends Phaser.Scene {
       graphics.fillStyle(COLORS.dark, 1);
       graphics.fillRect(px + 6, py + 3, 4, 10);
       graphics.fillRect(px + 3, py + 3, 10, 3);
+    } else if (tile === 'f') {
+      graphics.fillStyle(COLORS.accent, 1);
+      graphics.fillRect(px + 2, py + 4, 3, 10);
+      graphics.fillRect(px + 11, py + 4, 3, 10);
+      graphics.fillRect(px + 2, py + 6, 12, 2);
+      graphics.fillRect(px + 2, py + 11, 12, 2);
     }
+  }
+
+  private createCharacter(tileX: number, tileY: number, primary: number, secondary: number) {
+    const container = this.add.container(
+      tileX * TILE_SIZE + (TILE_SIZE - 12 * CHARACTER_SCALE) / 2,
+      tileY * TILE_SIZE - (16 * CHARACTER_SCALE - TILE_SIZE),
+    );
+    const sprite = this.add.graphics();
+    const colors: Record<string, number> = {
+      k: primary,
+      m: secondary,
+      l: COLORS.base,
+      d: COLORS.mid,
+    };
+
+    trainer.forEach((row, y) => {
+      row.split('').forEach((char, x) => {
+        const color = colors[char];
+        if (color === undefined || char === ' ') return;
+        sprite.fillStyle(color, 1);
+        sprite.fillRect(x * CHARACTER_SCALE, y * CHARACTER_SCALE, CHARACTER_SCALE, CHARACTER_SCALE);
+      });
+    });
+    container.add(sprite);
+    return container;
   }
 
   private handleMove = (direction: string) => {
@@ -152,7 +200,7 @@ export class OverworldScene extends Phaser.Scene {
     }
     if (nextX < 0 || nextY < 0 || nextX >= this.map.width || nextY >= this.map.height) return;
     const tile = this.map.tiles[nextY][nextX];
-    if (isSolidTile(tile, this.mapId)) {
+    if (isSolidTile(tile, this.mapId, nextX, nextY, this.map.width)) {
       if (tile === 'h') this.onDialogue?.('The house is closed for now. A warm light flickers inside.');
       else if (tile === 'w') this.onDialogue?.('The water is too deep to cross.');
       else if (tile === 't') this.onDialogue?.('A thick wall of trees blocks the path.');
@@ -160,16 +208,40 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     this.playerTile = { x: nextX, y: nextY };
-    this.player.setPosition(nextX * TILE_SIZE, nextY * TILE_SIZE);
+    this.player.setPosition(
+      nextX * TILE_SIZE + (TILE_SIZE - 12 * CHARACTER_SCALE) / 2,
+      nextY * TILE_SIZE - (16 * CHARACTER_SCALE - TILE_SIZE),
+    );
+    this.updateCamera();
     this.onPlayerPosition?.(this.mapId, nextX, nextY);
 
     const signKey = `${nextX},${nextY}`;
     if (tile === 's') this.onDialogue?.(SIGNS[signKey] ?? 'The sign is weathered.');
-    else if (nextX === this.npcTile.x && nextY === this.npcTile.y) this.onDialogue?.('Mossy Guide: Tall grass hides wild Tingals. Take care on Route 1.');
+    else if (this.mapId === 'town' && nextX === 6 && nextY === 7) {
+      this.onHeal?.();
+      this.onDialogue?.('HEALER: Your party is rested and ready for the road!');
+    } else if (this.mapId === 'town' && nextX === 10 && nextY === 7) {
+      this.onShop?.();
+    } else if (this.mapId === 'route' && nextX === this.npcTile.x && nextY === this.npcTile.y && !this.trainerDefeated) {
+      this.onDialogue?.('TRAINER RUNE challenges you to a battle!');
+      this.onTrainerBattle?.('TRAINER_RUNE');
+    } else if (nextX === this.npcTile.x && nextY === this.npcTile.y) this.onDialogue?.('Mossy Guide: Tall grass hides wild Tingals. Take care on Route 1.');
     else if (tile === 'g' && Math.random() < ENCOUNTER_RATE) {
       const encounters = ['EMBERFANG', 'GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'];
       this.onEncounter?.(encounters[Math.floor(Math.random() * encounters.length)]);
     }
+  }
+
+  private updateCamera() {
+    const camera = this.cameras.main;
+    const mapWidth = this.map.width * TILE_SIZE;
+    const mapHeight = this.map.height * TILE_SIZE;
+    const targetX = this.playerTile.x * TILE_SIZE + TILE_SIZE / 2 - camera.width / 2;
+    const targetY = this.playerTile.y * TILE_SIZE + TILE_SIZE / 2 - camera.height / 2;
+    camera.setScroll(
+      Phaser.Math.Clamp(targetX, 0, Math.max(0, mapWidth - camera.width)),
+      Phaser.Math.Clamp(targetY, 0, Math.max(0, mapHeight - camera.height)),
+    );
   }
 
   private changeMap(nextMap: MapId, spawnX: number) {

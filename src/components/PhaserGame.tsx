@@ -5,7 +5,7 @@ import type Phaser from 'phaser';
 import { OverworldScene } from '@/game/scenes/OverworldScene';
 
 type PhaserGameProps = {
-  phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle' | 'reward' | 'party' | 'settings';
+  phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle' | 'reward' | 'party' | 'shop' | 'settings';
   selectedStarter: string;
   mapId: string;
   spawnPosition: { x: number; y: number };
@@ -13,11 +13,15 @@ type PhaserGameProps = {
   onEncounter: (enemyName: string) => void;
   onMapChange: (mapName: string) => void;
   onPlayerPosition: (mapId: string, x: number, y: number) => void;
+  onHeal: () => void;
+  onShop: () => void;
+  onTrainerBattle: (enemyName: string) => void;
+  trainerDefeated: boolean;
 };
 
 type PhaserModule = typeof import('phaser');
 
-export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition }: PhaserGameProps) {
+export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition, onHeal, onShop, onTrainerBattle, trainerDefeated }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const [phaserModule, setPhaserModule] = useState<PhaserModule | null>(null);
@@ -60,6 +64,10 @@ export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDia
       gameRef.current.registry.set('onEncounter', onEncounter);
       gameRef.current.registry.set('onMapChange', onMapChange);
       gameRef.current.registry.set('onPlayerPosition', onPlayerPosition);
+      gameRef.current.registry.set('onHeal', onHeal);
+      gameRef.current.registry.set('onShop', onShop);
+      gameRef.current.registry.set('onTrainerBattle', onTrainerBattle);
+      gameRef.current.registry.set('trainerDefeated', trainerDefeated);
       if (phase === 'overworld') {
         gameRef.current.scene.stop('Overworld');
         gameRef.current.scene.start('Overworld');
@@ -70,7 +78,7 @@ export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDia
     const game = new phaserModule.Game({
       type: phaserModule.AUTO,
       width: 390,
-      height: 844,
+      height: 420,
       parent: containerRef.current,
       backgroundColor: '#dfe8a4',
       scale: {
@@ -94,6 +102,10 @@ export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDia
     game.registry.set('onEncounter', onEncounter);
     game.registry.set('onMapChange', onMapChange);
     game.registry.set('onPlayerPosition', onPlayerPosition);
+    game.registry.set('onHeal', onHeal);
+    game.registry.set('onShop', onShop);
+    game.registry.set('onTrainerBattle', onTrainerBattle);
+    game.registry.set('trainerDefeated', trainerDefeated);
 
     gameRef.current = game;
 
@@ -102,11 +114,11 @@ export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDia
       game.destroy(true);
       gameRef.current = null;
     };
-  }, [phaserModule, phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition]);
+  }, [phaserModule, phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition, onHeal, onShop, onTrainerBattle, trainerDefeated]);
 
-  if (phase === 'title' || phase === 'starter' || phase === 'encounter' || phase === 'reward' || phase === 'party' || phase === 'settings') {
+  if (phase === 'title' || phase === 'starter' || phase === 'encounter' || phase === 'reward' || phase === 'party' || phase === 'shop' || phase === 'settings') {
     return null;
   }
 
-  return <div ref={containerRef} className="h-[620px] w-full overflow-hidden rounded-none border-4 border-gb-3 bg-gb-0" />;
+  return <div ref={containerRef} className="mx-auto aspect-[13/14] w-full max-w-[390px] overflow-hidden rounded-none border-4 border-gb-3 bg-gb-0" />;
 }

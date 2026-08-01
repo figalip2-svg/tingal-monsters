@@ -1,4 +1,28 @@
-type SaveData = {
+export type SavedMove = {
+  name: string;
+  power: number;
+  type?: string;
+  pp?: number;
+  maxPp?: number;
+};
+
+export type SavedMonster = {
+  name: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  attack: number;
+  defense: number;
+  speed: number;
+  xp: number;
+  xpToNext: number;
+  moves: SavedMove[];
+  sprite?: string[];
+  scale?: number;
+  kind?: string;
+};
+
+export type SaveData = {
   selectedStarter?: string;
   coins?: number;
   mapId?: string;
@@ -12,6 +36,11 @@ type SaveData = {
   playerXpToNext?: number;
   playerX?: number;
   playerY?: number;
+  captureItems?: number;
+  partyNames?: string[];
+  party?: SavedMonster[];
+  activePartyIndex?: number;
+  trainerDefeated?: boolean;
 };
 
 const STORAGE_KEY = 'tingal-save';
