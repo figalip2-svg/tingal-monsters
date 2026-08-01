@@ -8,14 +8,16 @@ type PhaserGameProps = {
   phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle' | 'reward' | 'party' | 'settings';
   selectedStarter: string;
   mapId: string;
+  spawnPosition: { x: number; y: number };
   onDialogue: (message: string) => void;
   onEncounter: (enemyName: string) => void;
   onMapChange: (mapName: string) => void;
+  onPlayerPosition: (mapId: string, x: number, y: number) => void;
 };
 
 type PhaserModule = typeof import('phaser');
 
-export function PhaserGame({ phase, selectedStarter, mapId, onDialogue, onEncounter, onMapChange }: PhaserGameProps) {
+export function PhaserGame({ phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const [phaserModule, setPhaserModule] = useState<PhaserModule | null>(null);
@@ -52,9 +54,12 @@ export function PhaserGame({ phase, selectedStarter, mapId, onDialogue, onEncoun
     if (gameRef.current) {
       gameRef.current.registry.set('starterName', selectedStarter);
       gameRef.current.registry.set('mapId', mapId);
+      gameRef.current.registry.set('spawnX', spawnPosition.x);
+      gameRef.current.registry.set('spawnY', spawnPosition.y);
       gameRef.current.registry.set('onDialogue', onDialogue);
       gameRef.current.registry.set('onEncounter', onEncounter);
       gameRef.current.registry.set('onMapChange', onMapChange);
+      gameRef.current.registry.set('onPlayerPosition', onPlayerPosition);
       if (phase === 'overworld') {
         gameRef.current.scene.stop('Overworld');
         gameRef.current.scene.start('Overworld');
@@ -83,9 +88,12 @@ export function PhaserGame({ phase, selectedStarter, mapId, onDialogue, onEncoun
 
     game.registry.set('starterName', selectedStarter);
     game.registry.set('mapId', mapId);
+    game.registry.set('spawnX', spawnPosition.x);
+    game.registry.set('spawnY', spawnPosition.y);
     game.registry.set('onDialogue', onDialogue);
     game.registry.set('onEncounter', onEncounter);
     game.registry.set('onMapChange', onMapChange);
+    game.registry.set('onPlayerPosition', onPlayerPosition);
 
     gameRef.current = game;
 
@@ -94,7 +102,7 @@ export function PhaserGame({ phase, selectedStarter, mapId, onDialogue, onEncoun
       game.destroy(true);
       gameRef.current = null;
     };
-  }, [phaserModule, phase, selectedStarter, mapId, onDialogue, onEncounter, onMapChange]);
+  }, [phaserModule, phase, selectedStarter, mapId, spawnPosition, onDialogue, onEncounter, onMapChange, onPlayerPosition]);
 
   if (phase === 'title' || phase === 'starter' || phase === 'encounter' || phase === 'reward' || phase === 'party' || phase === 'settings') {
     return null;

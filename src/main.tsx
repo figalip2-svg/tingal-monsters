@@ -3,9 +3,10 @@ import ReactDOM from 'react-dom/client';
 import { RouterProvider, createRouter } from '@tanstack/react-router';
 import { rootRoute } from './routes/__root';
 import { Route as indexRoute } from './routes/index';
+import { Route as battleRoute } from './routes/battle';
 import './styles.css';
 
-const routeTree = rootRoute.addChildren([indexRoute]);
+const routeTree = rootRoute.addChildren([indexRoute, battleRoute]);
 const router = createRouter({ routeTree });
 
 declare module '@tanstack/react-router' {

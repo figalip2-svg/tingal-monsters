@@ -10,6 +10,8 @@ type SaveData = {
   playerDefense?: number;
   playerXp?: number;
   playerXpToNext?: number;
+  playerX?: number;
+  playerY?: number;
 };
 
 const STORAGE_KEY = 'tingal-save';

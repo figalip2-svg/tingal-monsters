@@ -184,6 +184,7 @@ function TitleScreen() {
   const [potions, setPotions] = useState(3);
   const [mapName, setMapName] = useState('VERDANT TOWN');
   const [mapId, setMapId] = useState<'town' | 'route' | 'grove'>('town');
+  const [spawnPosition, setSpawnPosition] = useState({ x: 1, y: 1 });
   const [returnPhase, setReturnPhase] = useState<ScreenPhase>('title');
   const [soundEnabled, setSoundEnabled] = useState(true);
 
@@ -208,6 +209,8 @@ function TitleScreen() {
       setMapId(saved.mapId);
       setMapName(saved.mapId === 'route' ? 'SUNLIT ROUTE' : 'MOSSHEART GROVE');
     }
+    setSpawnPosition({ x: saved.playerX ?? 1, y: saved.playerY ?? 1 });
+    setSpawnPosition({ x: saved.playerX ?? 1, y: saved.playerY ?? 1 });
     setCoins(saved.coins ?? 0);
     setPotions(saved.potions ?? 3);
   }, []);
@@ -246,8 +249,15 @@ function TitleScreen() {
   const handleMapChange = useCallback((name: string) => {
     setMapName(name);
     const nextMapId = name === 'SUNLIT ROUTE' ? 'route' : name === 'MOSSHEART GROVE' ? 'grove' : 'town';
+    if (nextMapId !== mapId) {
+      setSpawnPosition(nextMapId === 'town' ? { x: 14, y: 10 } : { x: 1, y: 10 });
+    }
     setMapId(nextMapId);
     writeSaveData({ mapId: nextMapId });
+  }, [mapId]);
+
+  const handlePlayerPosition = useCallback((nextMapId: string, x: number, y: number) => {
+    writeSaveData({ mapId: nextMapId, playerX: x, playerY: y });
   }, []);
 
   const handleEncounter = useCallback((enemyName: string) => {
@@ -259,7 +269,8 @@ function TitleScreen() {
   const selectStarter = useCallback((starter: StarterName) => {
     setSelectedStarter(starter);
     setPlayerProgress(createStarterMonster(starter));
-    writeSaveData({ selectedStarter: starter, mapId: 'town', potions: 3 });
+    setSpawnPosition({ x: 1, y: 1 });
+    writeSaveData({ selectedStarter: starter, mapId: 'town', playerX: 1, playerY: 1, potions: 3 });
     setPotions(3);
     setPhase('overworld');
     setDialogue(`You chose ${starter}. A guide waits beyond the town gate.`);
@@ -592,7 +603,7 @@ function TitleScreen() {
             </button>
           </header>
           <section className="relative mt-3 flex-1 px-3">
-            <PhaserGame phase={phase} selectedStarter={selectedStarter} mapId={mapId} onDialogue={handleDialogue} onEncounter={handleEncounter} onMapChange={handleMapChange} />
+            <PhaserGame phase={phase} selectedStarter={selectedStarter} mapId={mapId} spawnPosition={spawnPosition} onDialogue={handleDialogue} onEncounter={handleEncounter} onMapChange={handleMapChange} onPlayerPosition={handlePlayerPosition} />
             <div className="pointer-events-none absolute left-3 top-3 max-w-[180px] rounded-none border-4 border-gb-3 bg-gb-0/95 p-2">
               <p className="font-pixel text-[7px] leading-relaxed text-gb-3">{typedDialogue || 'Move with arrow keys or the touch D-pad.'}</p>
             </div>
