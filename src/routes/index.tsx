@@ -1271,6 +1271,93 @@ function TitleScreen() {
             <div className="pixel-box bg-gb-0 p-4 font-pixel text-[9px] text-gb-3">
               TEXT SPEED <span className="float-right">FAST</span>
             </div>
+
+            {/* Save / Load UI */}
+            <div className="pixel-box bg-gb-0 p-4 font-pixel text-[9px] text-gb-3">
+              <div className="flex items-center justify-between">
+                <span>SAVE / LOAD</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    // Quick save: write current state into primary autosave
+                    const toSave = {
+                      selectedStarter,
+                      coins,
+                      mapId,
+                      potions,
+                      playerX: spawnPosition.x,
+                      playerY: spawnPosition.y,
+                      captureItems,
+                      party: party.map(toSavedMonster),
+                      activePartyIndex,
+                      trainerDefeated,
+                    };
+                    writeSaveData(toSave);
+                    setDialogue('Game saved.');
+                  }}
+                  className="pixel-box bg-gb-1 px-2 py-1 font-pixel text-[7px] text-gb-3"
+                >
+                  QUICK SAVE
+                </button>
+              </div>
+              <p className="mt-2 font-pixel text-[7px] text-gb-2">Save to slots for manual load later.</p>
+              <div className="mt-3 grid gap-2">
+                {[1, 2].map((slot) => {
+                  const key = `tingal-save-slot-${slot}`;
+                  let slotData: any = null;
+                  try { slotData = typeof window !== 'undefined' ? JSON.parse(window.localStorage.getItem(key) || 'null') : null; } catch { slotData = null; }
+                  const label = slotData ? `${slotData.selectedStarter ?? 'SAVE'} · ${slotData.coins ?? 0}C` : 'EMPTY';
+                  return (
+                    <div key={slot} className="flex gap-2">
+                      <button type="button" onClick={() => {
+                        // Save to slot
+                        const toSave = {
+                          selectedStarter,
+                          coins,
+                          mapId,
+                          potions,
+                          playerX: spawnPosition.x,
+                          playerY: spawnPosition.y,
+                          captureItems,
+                          party: party.map(toSavedMonster),
+                          activePartyIndex,
+                          trainerDefeated,
+                        };
+                        try { window.localStorage.setItem(key, JSON.stringify(toSave)); setDialogue(`Saved to slot ${slot}.`); } catch { setDialogue('Failed to save.'); }
+                      }} className="flex-1 pixel-box bg-gb-0 px-3 py-2 font-pixel text-[8px] text-gb-3">SAVE SLOT {slot} · {label}</button>
+                      <button type="button" onClick={() => {
+                        // Load from slot
+                        try {
+                          const raw = window.localStorage.getItem(key);
+                          if (!raw) { setDialogue(`Slot ${slot} is empty.`); return; }
+                          const sd = JSON.parse(raw);
+                          // Apply loaded save
+                          if (sd.selectedStarter) setSelectedStarter(sd.selectedStarter as any);
+                          if (sd.party) {
+                            const nextParty = sd.party.map(fromSavedMonster);
+                            const nextIndex = Math.min(sd.activePartyIndex ?? 0, nextParty.length - 1);
+                            setParty(nextParty);
+                            setActivePartyIndex(nextIndex);
+                            setPlayerProgress(nextParty[nextIndex]);
+                          }
+                          if (sd.mapId === 'route' || sd.mapId === 'grove') { setMapId(sd.mapId); setMapName(sd.mapId === 'route' ? 'SUNLIT ROUTE' : 'MOSSHEART GROVE'); }
+                          setSpawnPosition({ x: sd.playerX ?? 1, y: sd.playerY ?? 1 });
+                          setCoins(sd.coins ?? 0);
+                          setPotions(sd.potions ?? 3);
+                          setCaptureItems(sd.captureItems ?? 5);
+                          setTrainerDefeated(sd.trainerDefeated ?? false);
+                          setDialogue(`Loaded slot ${slot}.`);
+                          setPhase('overworld');
+                        } catch (e) {
+                          setDialogue('Failed to load save.');
+                        }
+                      }} className="pixel-box bg-gb-1 px-2 py-1 font-pixel text-[7px] text-gb-3">LOAD</button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
             <div className="pixel-box bg-gb-0 p-4 font-pixel text-[9px] leading-relaxed text-gb-2">
               MOVE: ARROWS / WASD<br />CONFIRM: ENTER / Z<br />BACK: ESC / X
             </div>
