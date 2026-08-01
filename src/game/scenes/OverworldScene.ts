@@ -19,12 +19,23 @@ const SIMPLE_MAP = (grassTiles: Array<[number, number]>, obstacles: Array<[numbe
   return { tiles, width, height };
 };
 
+const routeMap = SIMPLE_MAP(
+  [[3, 3], [4, 3], [5, 3], [3, 4], [4, 4], [5, 4], [14, 14], [15, 14], [16, 14], [14, 15], [15, 15], [16, 15]],
+  [[8, 6], [9, 6], [10, 6], [8, 7], [10, 7], [8, 8], [9, 8], [10, 8]],
+);
+routeMap.tiles[0] = `${routeMap.tiles[0].slice(0, 10)}g${routeMap.tiles[0].slice(11)}`;
+
+const forestMap = SIMPLE_MAP(
+  [[5,5],[6,5],[7,5],[8,6],[9,6],[10,6],[5,7],[6,7],[7,7],[12,12],[13,12]],
+  [[9,9],[10,9],[11,9],[9,10],[11,10]],
+);
+forestMap.tiles[forestMap.height - 1] = `${forestMap.tiles[forestMap.height - 1].slice(0, 10)}g${forestMap.tiles[forestMap.height - 1].slice(11)}`;
+
 const MAPS: Record<MapId, MapDefinition> = {
   town: { tiles: MAP, width: WIDTH, height: HEIGHT },
-  route: SIMPLE_MAP([[3, 3], [4, 3], [5, 3], [3, 4], [4, 4], [5, 4], [14, 14], [15, 14], [16, 14], [14, 15], [15, 15], [16, 15]], [[8, 6], [9, 6], [10, 6], [8, 7], [10, 7], [8, 8], [9, 8], [10, 8]]),
+  route: routeMap,
   grove: SIMPLE_MAP([[4, 12], [5, 12], [6, 12], [7, 12], [4, 13], [5, 13], [6, 13], [7, 13], [14, 4], [15, 4], [14, 5], [15, 5]], [[3, 5], [4, 5], [3, 6], [4, 6], [16, 8], [17, 8], [16, 9], [17, 9]]),
-  // New forest map: denser grass, a few obstacles, slightly higher encounter density visually
-  forest: SIMPLE_MAP([[5,5],[6,5],[7,5],[8,6],[9,6],[10,6],[5,7],[6,7],[7,7],[12,12],[13,12]], [[9,9],[10,9],[11,9],[9,10],[11,10]]),
+  forest: forestMap,
 };
 
 const MAP_NAMES: Record<MapId, string> = {
@@ -205,7 +216,11 @@ export class OverworldScene extends Phaser.Scene {
     const nextY = this.playerTile.y + dy;
     // Enter forest if moving off the top edge of the route
     if (nextY < 0 && this.mapId === 'route') {
-      this.changeMap('forest', Math.floor(MAPS.forest.width / 2));
+      this.changeMap('forest', Math.floor(MAPS.forest.width / 2), 1);
+      return;
+    }
+    if (nextY >= this.map.height && this.mapId === 'forest') {
+      this.changeMap('route', Math.floor(MAPS.route.width / 2), MAPS.route.height - 2);
       return;
     }
 
@@ -285,10 +300,10 @@ export class OverworldScene extends Phaser.Scene {
     );
   }
 
-  private changeMap(nextMap: MapId, spawnX: number) {
+  private changeMap(nextMap: MapId, spawnX: number, spawnY = 10) {
     this.registry.set('mapId', nextMap);
     this.registry.set('spawnX', spawnX);
-    this.registry.set('spawnY', 10);
+    this.registry.set('spawnY', spawnY);
     this.scene.restart();
   }
 }
