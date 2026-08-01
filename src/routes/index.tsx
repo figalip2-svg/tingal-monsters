@@ -203,6 +203,11 @@ const LEARNSETS: Record<string, Array<{ level: number; move: MoveState }>> = {
   ],
 };
 
+// Trainer teams: each trainer key maps to an ordered list of enemy names they will send
+const TRAINER_TEAMS: Record<string, string[]> = {
+  TRAINER_RUNE: ['RIPPLEFIN', 'CRAGHORN'],
+};
+
 
 function Grass() {
   const blades = Array.from({ length: 32 });
@@ -318,6 +323,11 @@ function TitleScreen() {
   const [trainerDefeated, setTrainerDefeated] = useState(false);
   // Pending learn modal state when a monster attempts to learn a move but already has 4 moves
   const [pendingLearn, setPendingLearn] = useState<{ partyIndex: number; move: MoveState } | null>(null);
+  // Trainer team / queue state for multi-monster trainer battles
+  const [trainerQueue, setTrainerQueue] = useState<string[] | null>(null);
+  const [currentTrainer, setCurrentTrainer] = useState<string | null>(null);
+  // Save confirmation overlay
+  const [saveConfirm, setSaveConfirm] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = readSaveData();
@@ -381,6 +391,27 @@ function TitleScreen() {
     persistParty(nextParty);
     setPlayerProgress(nextMonster);
   }, [activePartyIndex, party, persistParty]);
+
+  // Small helper to play a beep using WebAudio (no external files needed)
+  const playBeep = useCallback((freq = 440, duration = 0.08) => {
+    try {
+      const AC = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext | undefined;
+      if (!AC) return;
+      const ctx = new AC();
+      const o = ctx.createOscillator();
+      const g = ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = freq;
+      g.gain.value = 0.05;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      setTimeout(() => {
+        o.stop();
+        ctx.close();
+      }, duration * 1000);
+    } catch { /* ignore audio errors */ }
+  }, []);
 
   // Level-up helper: given a monster and XP gain, return updated monster and count of levels gained.
   const levelUpMonster = useCallback((mon: MonsterState, xpGain: number) => {
@@ -492,7 +523,19 @@ function TitleScreen() {
 
   const handleTrainerBattle = useCallback((enemyName: string) => {
     if (trainerDefeated || battleState) return;
-    setEncounterName('TRAINER RUNE');
+    // If this is a named trainer with a team, queue their team for sequential battles
+    const team = TRAINER_TEAMS[enemyName];
+    if (team && team.length > 0) {
+      setCurrentTrainer(enemyName);
+      setTrainerQueue([...team]);
+      setEncounterName(team[0]);
+      setPhase('encounter');
+      window.setTimeout(() => startBattle(team[0], false), 720);
+      return;
+    }
+
+    // Fallback: single enemy trainer
+    setEncounterName(enemyName);
     setPhase('encounter');
     window.setTimeout(() => startBattle(enemyName, false), 720);
   }, [battleState, startBattle, trainerDefeated]);
@@ -755,6 +798,26 @@ function TitleScreen() {
         return totalCoins;
       });
 
+      // Trainer battle handling: if a trainerQueue exists, advance to next enemy instead of finishing immediately
+      if (currentTrainer && trainerQueue && trainerQueue.length > 0) {
+        // Remove the defeated enemy from the queue
+        const [, ...remaining] = trainerQueue;
+        if (remaining.length > 0) {
+          // Start the next trainer monster
+          setTrainerQueue(remaining);
+          const nextEnemy = remaining[0];
+          setDialogue(`TRAINER sent out ${nextEnemy}!`);
+          window.setTimeout(() => startBattle(nextEnemy, false), 700);
+          return; // do not show final reward yet
+        }
+
+        // If queue is now empty, mark trainer defeated
+        setTrainerQueue(null);
+        setCurrentTrainer(null);
+        setTrainerDefeated(true);
+        writeSaveData({ trainerDefeated: true });
+      }
+
       setReward({
         foeName: battleState.enemy.name,
         xp: xpGain,
@@ -776,11 +839,6 @@ function TitleScreen() {
             setDialogue(`${updatedActive.name} can learn ${learnEntry.move.name}! Choose a move to forget or skip.`);
           }, 300);
         }
-      }
-
-      if (!battleState.canCapture) {
-        setTrainerDefeated(true);
-        writeSaveData({ trainerDefeated: true });
       }
 
       setPhase('reward');
@@ -1293,7 +1351,9 @@ function TitleScreen() {
                       trainerDefeated,
                     };
                     writeSaveData(toSave);
-                    setDialogue('Game saved.');
+                    setSaveConfirm('Game saved');
+                    playBeep(880, 0.12);
+                    setTimeout(() => setSaveConfirm(null), 1200);
                   }}
                   className="pixel-box bg-gb-1 px-2 py-1 font-pixel text-[7px] text-gb-3"
                 >
@@ -1323,7 +1383,7 @@ function TitleScreen() {
                           activePartyIndex,
                           trainerDefeated,
                         };
-                        try { window.localStorage.setItem(key, JSON.stringify(toSave)); setDialogue(`Saved to slot ${slot}.`); } catch { setDialogue('Failed to save.'); }
+                        try { window.localStorage.setItem(key, JSON.stringify(toSave)); setSaveConfirm(`Saved to slot ${slot}`); playBeep(880,0.12); setTimeout(() => setSaveConfirm(null), 1200); } catch { setDialogue('Failed to save.'); }
                       }} className="flex-1 pixel-box bg-gb-0 px-3 py-2 font-pixel text-[8px] text-gb-3">SAVE SLOT {slot} · {label}</button>
                       <button type="button" onClick={() => {
                         // Load from slot
@@ -1347,6 +1407,7 @@ function TitleScreen() {
                           setCaptureItems(sd.captureItems ?? 5);
                           setTrainerDefeated(sd.trainerDefeated ?? false);
                           setDialogue(`Loaded slot ${slot}.`);
+                          playBeep(660, 0.12);
                           setPhase('overworld');
                         } catch (e) {
                           setDialogue('Failed to load save.');
@@ -1371,6 +1432,15 @@ function TitleScreen() {
       </div>
     </main>
   );
+
+  // Save confirm overlay
+  const saveConfirmOverlay = saveConfirm ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+      <div className="pixel-box bg-gb-0 p-3"> 
+        <p className="font-pixel text-[9px] text-gb-3">{saveConfirm}</p>
+      </div>
+    </div>
+  ) : null;
 
   const shopContent = (
     <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
@@ -1458,6 +1528,7 @@ function TitleScreen() {
       {phase === 'shop' && shopContent}
       {phase === 'party' && partyContent}
       {battleFlash && <div className="pointer-events-none fixed inset-0 z-50 bg-white/90" />}
+      {saveConfirmOverlay}
     </>
   );
 }
