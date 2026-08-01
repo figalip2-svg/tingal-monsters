@@ -318,6 +318,37 @@ function TitleScreen() {
     setPlayerProgress(nextMonster);
   }, [activePartyIndex, party, persistParty]);
 
+  // Level-up helper: given a monster and XP gain, return updated monster and count of levels gained.
+  const levelUpMonster = useCallback((mon: MonsterState, xpGain: number) => {
+    const nextXpTotal = (mon.xp ?? 0) + xpGain;
+    let level = mon.level ?? 1;
+    let remaining = nextXpTotal;
+    let levelUps = 0;
+    while (remaining >= level * 18) {
+      remaining -= level * 18;
+      level += 1;
+      levelUps += 1;
+    }
+    const addedHp = levelUps > 0 ? 2 * levelUps : 0; // +2 max HP per level
+    const addedAtk = levelUps > 0 ? 1 * levelUps : 0;
+    const addedDef = levelUps > 0 ? 1 * levelUps : 0;
+    const nextMaxHp = mon.maxHp + addedHp;
+    // Heal a little on level up (but do not exceed new maxHp)
+    const nextHp = Math.min(nextMaxHp, (mon.hp ?? mon.maxHp) + 2 * levelUps);
+
+    return {
+      ...mon,
+      level,
+      maxHp: nextMaxHp,
+      attack: (mon.attack ?? 0) + addedAtk,
+      defense: (mon.defense ?? 0) + addedDef,
+      hp: nextHp,
+      xp: remaining,
+      xpToNext: level * 18,
+      leveled: levelUps,
+    } as MonsterState & { leveled: number };
+  }, []);
+
   const startBattle = useCallback((enemyName: string, canCapture = true) => {
     const enemy = createEnemyMonster(enemyName);
     setReward(null);
@@ -605,54 +636,54 @@ function TitleScreen() {
 
     const finishVictory = (winningPlayer: MonsterState, defeatedEnemy: MonsterState, log: string) => {
       const xpGain = battleState.enemy.level * 4 + 2;
-      const nextPlayerXp = winningPlayer.xp + xpGain;
-      let nextLevel = winningPlayer.level;
-      let remainingXp = nextPlayerXp;
-      let levelUps = 0;
-      while (remainingXp >= nextLevel * 18) {
-        remainingXp -= nextLevel * 18;
-        nextLevel += 1;
-        levelUps += 1;
-      }
-      const nextPlayer = {
-        ...winningPlayer,
-        level: nextLevel,
-        maxHp: winningPlayer.maxHp + (levelUps > 0 ? 2 : 0),
-        attack: winningPlayer.attack + (levelUps > 0 ? 1 : 0),
-        defense: winningPlayer.defense + (levelUps > 0 ? 1 : 0),
-        xp: remainingXp,
-        xpToNext: nextLevel * 18,
-      };
-      const resultLog = `${log}\nVictory! ${battleState.player.name} earned ${xpGain} XP. ${levelUps > 0 ? `Level up! ${battleState.player.name} is now level ${nextLevel}.` : ''}`;
-      updateActiveMonster(nextPlayer);
-      writeSaveData({
-        playerLevel: nextPlayer.level,
-        playerHp: nextPlayer.hp,
-        playerMaxHp: nextPlayer.maxHp,
-        playerAttack: nextPlayer.attack,
-        playerDefense: nextPlayer.defense,
-        playerXp: nextPlayer.xp,
-        playerXpToNext: nextPlayer.xpToNext,
+
+      // Apply full XP to the active (winning) monster
+      const updatedActive = levelUpMonster(winningPlayer, xpGain) as MonsterState & { leveled: number };
+
+      // Small XP share to other party members (20% rounded down), only to living monsters
+      const share = Math.floor(xpGain * 0.2);
+      const nextParty = party.map((mon, idx) => {
+        if (idx === activePartyIndex) return updatedActive;
+        if (!mon) return mon;
+        if ((mon.hp ?? 0) <= 0 || share <= 0) return mon;
+        const updated = levelUpMonster(mon, share) as MonsterState & { leveled: number };
+        // remove helper field before returning
+        const { leveled, ...rest } = updated as any;
+        return rest as MonsterState;
       });
-      setBattleState({ ...battleState, player: nextPlayer, enemy: defeatedEnemy, view: 'menu', log: resultLog, status: 'won', turn: 'ready' });
+
+      // Ensure active slot is replaced with fully updated active (strip helper field)
+      const { leveled: activeLeveled, ...activeNoMeta } = updatedActive as any;
+      nextParty[activePartyIndex] = activeNoMeta as MonsterState;
+
+      // Persist entire party (includes per-move PP and XP changes)
+      persistParty(nextParty, activePartyIndex);
+
+      const resultLog = `${log}\nVictory! ${winningPlayer.name} earned ${xpGain} XP. ${updatedActive.leveled > 0 ? `Level up! ${winningPlayer.name} is now level ${updatedActive.level}.` : ''}`;
+
+      setBattleState({ ...battleState, player: activeNoMeta as MonsterState, enemy: defeatedEnemy, view: 'menu', log: resultLog, status: 'won', turn: 'ready' });
       setBattleLog(resultLog);
+
       const coinReward = 5 + battleState.enemy.level * 2;
       setCoins((currentCoins) => {
         const totalCoins = currentCoins + coinReward;
         writeSaveData({ coins: totalCoins });
         return totalCoins;
       });
+
       setReward({
         foeName: battleState.enemy.name,
         xp: xpGain,
         coins: coinReward,
-        level: nextLevel,
-        leveledUp: levelUps > 0,
+        level: updatedActive.level,
+        leveledUp: updatedActive.leveled > 0,
       });
+
       if (!battleState.canCapture) {
         setTrainerDefeated(true);
         writeSaveData({ trainerDefeated: true });
       }
+
       setPhase('reward');
     };
 
