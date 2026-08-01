@@ -97,6 +97,10 @@ export class OverworldScene extends Phaser.Scene {
       this.createCharacter(6, 7, COLORS.dark, COLORS.light);
       this.createCharacter(10, 7, COLORS.accent, COLORS.light);
     }
+    if (this.mapId === 'route') {
+      // Add a visible trainer on the route at 6,6
+      this.createCharacter(6, 6, COLORS.accent, COLORS.dark);
+    }
 
     this.cameras.main.setBounds(0, 0, this.map.width * TILE_SIZE, this.map.height * TILE_SIZE);
     this.cameras.main.setRoundPixels(true);
@@ -225,6 +229,10 @@ export class OverworldScene extends Phaser.Scene {
     } else if (this.mapId === 'route' && nextX === this.npcTile.x && nextY === this.npcTile.y && !this.trainerDefeated) {
       this.onDialogue?.('TRAINER RUNE challenges you to a battle!');
       this.onTrainerBattle?.('TRAINER_RUNE');
+    } else if (this.mapId === 'route' && nextX === 6 && nextY === 6 && !this.trainerDefeated) {
+      // Another trainer on the route
+      this.onDialogue?.('TRAINER MIRA challenges you to a battle!');
+      this.onTrainerBattle?.('TRAINER_MIRA');
     } else if (nextX === this.npcTile.x && nextY === this.npcTile.y) this.onDialogue?.('Mossy Guide: Tall grass hides wild Tingals. Take care on Route 1.');
     else if (tile === 'g' && Math.random() < ENCOUNTER_RATE) {
       const encounters = ['EMBERFANG', 'GLIMMOTH', 'CRAGHORN', 'RIPPLEFIN'];

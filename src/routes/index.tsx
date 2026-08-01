@@ -206,6 +206,7 @@ const LEARNSETS: Record<string, Array<{ level: number; move: MoveState }>> = {
 // Trainer teams: each trainer key maps to an ordered list of enemy names they will send
 const TRAINER_TEAMS: Record<string, string[]> = {
   TRAINER_RUNE: ['RIPPLEFIN', 'CRAGHORN'],
+  TRAINER_MIRA: ['EMBERFANG', 'GLIMMOTH'],
 };
 
 
@@ -798,6 +799,13 @@ function TitleScreen() {
         return totalCoins;
       });
 
+      // Play a small jingle if the active monster leveled up
+      if ((updatedActive as any).leveled > 0) {
+        playBeep(880, 0.06);
+        setTimeout(() => playBeep(1100, 0.07), 90);
+        setTimeout(() => playBeep(1320, 0.08), 190);
+      }
+
       // Trainer battle handling: if a trainerQueue exists, advance to next enemy instead of finishing immediately
       if (currentTrainer && trainerQueue && trainerQueue.length > 0) {
         // Remove the defeated enemy from the queue
@@ -816,6 +824,9 @@ function TitleScreen() {
         setCurrentTrainer(null);
         setTrainerDefeated(true);
         writeSaveData({ trainerDefeated: true });
+
+        // Small level-up reward jingle when trainer is defeated
+        playBeep(880, 0.06);
       }
 
       setReward({
