@@ -23,7 +23,7 @@ export const Route = createRoute({
   component: TitleScreen,
 });
 
-type ScreenPhase = 'title' | 'starter' | 'overworld' | 'encounter' | 'battle';
+type ScreenPhase = 'title' | 'starter' | 'overworld' | 'encounter' | 'battle' | 'reward' | 'party' | 'settings';
 type StarterName = 'Pyroshell' | 'Aquataur' | 'Florisaur';
 type BattleView = 'menu' | 'moves';
 
@@ -49,6 +49,15 @@ type BattleState = {
   view: BattleView;
   log: string;
   status: 'active' | 'won' | 'lost';
+  turn: 'ready' | 'busy';
+};
+
+type RewardState = {
+  foeName: string;
+  xp: number;
+  coins: number;
+  level: number;
+  leveledUp: boolean;
 };
 
 const MENU = [
@@ -164,17 +173,43 @@ function TitleScreen() {
   const [selected, setSelected] = useState(0);
   const [phase, setPhase] = useState<ScreenPhase>('title');
   const [selectedStarter, setSelectedStarter] = useState<StarterName>('Pyroshell');
+  const [playerProgress, setPlayerProgress] = useState<MonsterState>(() => createStarterMonster('Pyroshell'));
   const [dialogue, setDialogue] = useState('');
   const [battleState, setBattleState] = useState<BattleState | null>(null);
   const [battleFlash, setBattleFlash] = useState(false);
   const [battleLog, setBattleLog] = useState('');
   const [encounterName, setEncounterName] = useState('');
+  const [coins, setCoins] = useState(0);
+  const [reward, setReward] = useState<RewardState | null>(null);
+  const [potions, setPotions] = useState(3);
+  const [mapName, setMapName] = useState('VERDANT TOWN');
+  const [mapId, setMapId] = useState<'town' | 'route' | 'grove'>('town');
+  const [returnPhase, setReturnPhase] = useState<ScreenPhase>('title');
+  const [soundEnabled, setSoundEnabled] = useState(true);
 
   useEffect(() => {
     const saved = readSaveData();
     if (saved.selectedStarter) {
-      setSelectedStarter(saved.selectedStarter as StarterName);
+      const savedStarter = saved.selectedStarter as StarterName;
+      setSelectedStarter(savedStarter);
+      const starter = createStarterMonster(savedStarter);
+      setPlayerProgress({
+        ...starter,
+        level: saved.playerLevel ?? starter.level,
+        hp: saved.playerHp ?? starter.hp,
+        maxHp: saved.playerMaxHp ?? starter.maxHp,
+        attack: saved.playerAttack ?? starter.attack,
+        defense: saved.playerDefense ?? starter.defense,
+        xp: saved.playerXp ?? starter.xp,
+        xpToNext: saved.playerXpToNext ?? starter.xpToNext,
+      });
     }
+    if (saved.mapId === 'route' || saved.mapId === 'grove') {
+      setMapId(saved.mapId);
+      setMapName(saved.mapId === 'route' ? 'SUNLIT ROUTE' : 'MOSSHEART GROVE');
+    }
+    setCoins(saved.coins ?? 0);
+    setPotions(saved.potions ?? 3);
   }, []);
 
   useEffect(() => {
@@ -183,16 +218,18 @@ function TitleScreen() {
 
   const typedDialogue = useTypewriterText(dialogue);
 
-  const playerMonster = useMemo(() => createStarterMonster(selectedStarter), [selectedStarter]);
+  const playerMonster = useMemo(() => playerProgress, [playerProgress]);
 
   const startBattle = useCallback((enemyName: string) => {
     const enemy = createEnemyMonster(enemyName);
+    setReward(null);
     const initialBattle: BattleState = {
       player: playerMonster,
       enemy,
       view: 'menu',
       log: `${playerMonster.name} locks eyes with ${enemy.name}.`,
       status: 'active',
+      turn: 'ready',
     };
 
     setBattleState(initialBattle);
@@ -206,6 +243,13 @@ function TitleScreen() {
     setDialogue(message);
   }, []);
 
+  const handleMapChange = useCallback((name: string) => {
+    setMapName(name);
+    const nextMapId = name === 'SUNLIT ROUTE' ? 'route' : name === 'MOSSHEART GROVE' ? 'grove' : 'town';
+    setMapId(nextMapId);
+    writeSaveData({ mapId: nextMapId });
+  }, []);
+
   const handleEncounter = useCallback((enemyName: string) => {
     setEncounterName(enemyName);
     setPhase('encounter');
@@ -214,6 +258,9 @@ function TitleScreen() {
 
   const selectStarter = useCallback((starter: StarterName) => {
     setSelectedStarter(starter);
+    setPlayerProgress(createStarterMonster(starter));
+    writeSaveData({ selectedStarter: starter, mapId: 'town', potions: 3 });
+    setPotions(3);
     setPhase('overworld');
     setDialogue(`You chose ${starter}. A guide waits beyond the town gate.`);
   }, []);
@@ -226,6 +273,42 @@ function TitleScreen() {
       return;
     }
 
+    if (action === 'bag') {
+      if (potions <= 0) {
+        const log = 'THE BAG IS EMPTY.';
+        setBattleState({ ...battleState, log });
+        setBattleLog(log);
+      } else if (battleState.player.hp >= battleState.player.maxHp) {
+        const log = 'HP IS ALREADY FULL.';
+        setBattleState({ ...battleState, log });
+        setBattleLog(log);
+      } else {
+        const healed = Math.min(8, battleState.player.maxHp - battleState.player.hp);
+        const healedPlayer = { ...battleState.player, hp: battleState.player.hp + healed };
+        setPotions((current) => {
+          const next = current - 1;
+          writeSaveData({ potions: next });
+          return next;
+        });
+        setPlayerProgress(healedPlayer);
+        writeSaveData({ playerHp: healedPlayer.hp });
+        const log = `${battleState.player.name} recovered ${healed} HP.`;
+        setBattleState({
+          ...battleState,
+          player: healedPlayer,
+          log,
+        });
+        setBattleLog(log);
+      }
+      return;
+    }
+
+    if (action === 'monsters') {
+      setReturnPhase('battle');
+      setPhase('party');
+      return;
+    }
+
     if (action === 'run') {
       setBattleState(null);
       setBattleLog('');
@@ -234,24 +317,26 @@ function TitleScreen() {
       return;
     }
 
-    setBattleState({ ...battleState, view: 'menu', log: `${battleState.player.name} cannot use ${action.toUpperCase()} yet.` });
-  }, [battleState]);
+    setBattleState({ ...battleState, view: 'menu', log: `${battleState.player.name} cannot use ${String(action).toUpperCase()} yet.` });
+  }, [battleState, potions]);
 
   const resolveMove = useCallback((moveIndex: number) => {
-    if (!battleState) return;
+    if (!battleState || battleState.status !== 'active' || battleState.turn === 'busy') return;
 
     const move = battleState.player.moves[moveIndex];
     if (!move) return;
 
-    const damage = Math.max(1, battleState.player.attack + move.power - battleState.enemy.defense);
-    const nextEnemyHp = Math.max(0, battleState.enemy.hp - damage);
-    const nextEnemy = { ...battleState.enemy, hp: nextEnemyHp };
-    const playerLog = `${battleState.player.name} used ${move.name} for ${damage} damage.`;
+    const enemyMove = battleState.enemy.moves[Math.floor(Math.random() * battleState.enemy.moves.length)];
+    const playerDamage = Math.max(1, battleState.player.attack + move.power - battleState.enemy.defense);
+    const enemyDamage = Math.max(1, Math.round(battleState.enemy.attack + enemyMove.power - battleState.player.defense / 2));
+    const playerActsFirst = battleState.player.speed >= battleState.enemy.speed;
+    const playerLog = `${battleState.player.name} used ${move.name} for ${playerDamage} damage.`;
+    const enemyLog = `${battleState.enemy.name} used ${enemyMove.name} for ${enemyDamage} damage.`;
 
-    if (nextEnemyHp <= 0) {
+    const finishVictory = (winningPlayer: MonsterState, defeatedEnemy: MonsterState, log: string) => {
       const xpGain = battleState.enemy.level * 4 + 2;
-      const nextPlayerXp = battleState.player.xp + xpGain;
-      let nextLevel = battleState.player.level;
+      const nextPlayerXp = winningPlayer.xp + xpGain;
+      let nextLevel = winningPlayer.level;
       let remainingXp = nextPlayerXp;
       let levelUps = 0;
       while (remainingXp >= nextLevel * 18) {
@@ -260,50 +345,122 @@ function TitleScreen() {
         levelUps += 1;
       }
       const nextPlayer = {
-        ...battleState.player,
+        ...winningPlayer,
         level: nextLevel,
-        hp: battleState.player.hp,
-        maxHp: battleState.player.maxHp + (levelUps > 0 ? 2 : 0),
-        attack: battleState.player.attack + (levelUps > 0 ? 1 : 0),
-        defense: battleState.player.defense + (levelUps > 0 ? 1 : 0),
+        maxHp: winningPlayer.maxHp + (levelUps > 0 ? 2 : 0),
+        attack: winningPlayer.attack + (levelUps > 0 ? 1 : 0),
+        defense: winningPlayer.defense + (levelUps > 0 ? 1 : 0),
         xp: remainingXp,
         xpToNext: nextLevel * 18,
       };
-      const resultLog = `${playerLog}\nVictory! ${battleState.player.name} earned ${xpGain} XP. ${levelUps > 0 ? `Level up! ${battleState.player.name} is now level ${nextLevel}.` : ''}`;
-      setBattleState({ ...battleState, player: nextPlayer, enemy: nextEnemy, view: 'menu', log: resultLog, status: 'won' });
+      const resultLog = `${log}\nVictory! ${battleState.player.name} earned ${xpGain} XP. ${levelUps > 0 ? `Level up! ${battleState.player.name} is now level ${nextLevel}.` : ''}`;
+      setPlayerProgress(nextPlayer);
+      writeSaveData({
+        playerLevel: nextPlayer.level,
+        playerHp: nextPlayer.hp,
+        playerMaxHp: nextPlayer.maxHp,
+        playerAttack: nextPlayer.attack,
+        playerDefense: nextPlayer.defense,
+        playerXp: nextPlayer.xp,
+        playerXpToNext: nextPlayer.xpToNext,
+      });
+      setBattleState({ ...battleState, player: nextPlayer, enemy: defeatedEnemy, view: 'menu', log: resultLog, status: 'won', turn: 'ready' });
       setBattleLog(resultLog);
-      window.setTimeout(() => {
-        setBattleState(null);
-        setBattleLog('');
-        setPhase('overworld');
-        setDialogue(`${battleState.player.name} rests after the victory. The path continues.`);
-      }, 1400);
-      return;
-    }
-
-    const enemyDamage = Math.max(1, Math.round((battleState.enemy.attack + 2) - battleState.player.defense / 2));
-    const nextPlayerHp = Math.max(0, battleState.player.hp - enemyDamage);
-    const nextPlayer = { ...battleState.player, hp: nextPlayerHp };
-    const enemyLog = `${battleState.enemy.name} countered for ${enemyDamage} damage.`;
-    const nextBattle: BattleState = {
-      player: nextPlayer,
-      enemy: nextEnemy,
-      view: 'menu',
-      log: `${playerLog}\n${enemyLog}`,
-      status: nextPlayerHp <= 0 ? 'lost' : 'active',
+      const coinReward = 5 + battleState.enemy.level * 2;
+      setCoins((currentCoins) => {
+        const totalCoins = currentCoins + coinReward;
+        writeSaveData({ coins: totalCoins });
+        return totalCoins;
+      });
+      setReward({
+        foeName: battleState.enemy.name,
+        xp: xpGain,
+        coins: coinReward,
+        level: nextLevel,
+        leveledUp: levelUps > 0,
+      });
+      setPhase('reward');
     };
 
-    setBattleState(nextBattle);
-    setBattleLog(nextBattle.log);
-    if (nextPlayerHp <= 0) {
-      window.setTimeout(() => {
-        setBattleState(null);
-        setBattleLog('');
-        setPhase('overworld');
-        setDialogue('Your starter was defeated. The town healer will restore you.');
-      }, 1400);
-    }
+    setBattleState({ ...battleState, view: 'moves', turn: 'busy', log: playerActsFirst ? playerLog : `${battleState.enemy.name} is faster.` });
+    setBattleLog(playerActsFirst ? playerLog : `${battleState.enemy.name} is faster.`);
+    setBattleFlash(true);
+
+    window.setTimeout(() => {
+      const firstPlayerHp = playerActsFirst
+        ? battleState.player.hp
+        : Math.max(0, battleState.player.hp - enemyDamage);
+      const firstEnemyHp = playerActsFirst
+        ? Math.max(0, battleState.enemy.hp - playerDamage)
+        : battleState.enemy.hp;
+
+      if (firstPlayerHp <= 0) {
+        const lostBattle: BattleState = {
+          ...battleState,
+          player: { ...battleState.player, hp: 0 },
+          view: 'menu',
+          turn: 'ready',
+          log: `${enemyLog}\n${battleState.player.name} fainted.`,
+          status: 'lost',
+        };
+        setBattleState(lostBattle);
+        setBattleLog(lostBattle.log);
+        setBattleFlash(false);
+        window.setTimeout(() => {
+          setBattleState(null);
+          setBattleLog('');
+          setPhase('overworld');
+          setDialogue('Your starter was defeated. The town healer will restore you.');
+        }, 1400);
+        return;
+      }
+
+      if (firstEnemyHp <= 0) {
+        const winningPlayer = { ...battleState.player, hp: firstPlayerHp };
+        finishVictory(winningPlayer, { ...battleState.enemy, hp: 0 }, playerActsFirst ? playerLog : `${enemyLog}\n${playerLog}`);
+        setBattleFlash(false);
+        return;
+      }
+
+      const nextPlayerHp = playerActsFirst
+        ? Math.max(0, firstPlayerHp - enemyDamage)
+        : firstPlayerHp;
+      const nextEnemyHp = playerActsFirst
+        ? firstEnemyHp
+        : Math.max(0, firstEnemyHp - playerDamage);
+      const nextPlayer = { ...battleState.player, hp: nextPlayerHp };
+      const nextEnemy = { ...battleState.enemy, hp: nextEnemyHp };
+      const nextLog = playerActsFirst ? `${playerLog}\n${enemyLog}` : `${enemyLog}\n${playerLog}`;
+
+      if (nextEnemyHp <= 0) {
+        finishVictory(nextPlayer, nextEnemy, nextLog);
+      } else if (nextPlayerHp <= 0) {
+        const lostBattle: BattleState = { ...battleState, player: nextPlayer, enemy: nextEnemy, view: 'menu', turn: 'ready', log: `${nextLog}\n${battleState.player.name} fainted.`, status: 'lost' };
+        setBattleState(lostBattle);
+        setBattleLog(lostBattle.log);
+        window.setTimeout(() => {
+          setBattleState(null);
+          setBattleLog('');
+          setPhase('overworld');
+          setDialogue('Your starter was defeated. The town healer will restore you.');
+        }, 1400);
+      } else {
+        const nextBattle: BattleState = { ...battleState, player: nextPlayer, enemy: nextEnemy, view: 'menu', turn: 'ready', log: nextLog, status: 'active' };
+        setBattleState(nextBattle);
+        setBattleLog(nextBattle.log);
+      }
+      setBattleFlash(false);
+    }, 320);
   }, [battleState]);
+
+  const continueAfterReward = useCallback(() => {
+    if (!reward) return;
+    setReward(null);
+    setBattleState(null);
+    setBattleLog('');
+    setPhase('overworld');
+    setDialogue(`${battleState?.player.name ?? selectedStarter} rests after the victory. The path continues.`);
+  }, [battleState, reward, selectedStarter]);
 
   const titleContent = (
     <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
@@ -342,6 +499,24 @@ function TitleScreen() {
                       setSelected(i);
                       if (item.label === 'START GAME') {
                         setPhase('starter');
+                      } else if (item.label === 'CONTINUE') {
+                        const saved = readSaveData();
+                        if (saved.selectedStarter) {
+                          setSelectedStarter(saved.selectedStarter as StarterName);
+                          setCoins(saved.coins ?? 0);
+                          setPotions(saved.potions ?? 3);
+                          if (saved.mapId === 'route' || saved.mapId === 'grove') {
+                            setMapId(saved.mapId);
+                            setMapName(saved.mapId === 'route' ? 'SUNLIT ROUTE' : 'MOSSHEART GROVE');
+                          }
+                          setPhase('overworld');
+                          setDialogue('Save loaded. Your adventure continues.');
+                        } else {
+                          setDialogue('NO SAVE FILE FOUND. START A NEW ADVENTURE.');
+                        }
+                      } else if (item.label === 'SETTINGS') {
+                        setReturnPhase('title');
+                        setPhase('settings');
                       }
                     }}
                     className="flex w-full items-center gap-3 px-2 py-3 text-left outline-none"
@@ -409,20 +584,20 @@ function TitleScreen() {
         <div className="screen-scanlines relative flex min-h-[720px] flex-col overflow-hidden border-8 border-gb-3 bg-gb-0 sm:min-h-[780px]">
           <header className="flex items-center justify-between px-4 pt-4">
             <div>
-              <p className="font-pixel text-[10px] text-gb-3">VERDANT TOWN</p>
-              <p className="mt-1 font-pixel text-[7px] text-gb-2">{selectedStarter.toUpperCase()}</p>
+              <p className="font-pixel text-[10px] text-gb-3">{mapName}</p>
+              <p className="mt-1 font-pixel text-[7px] text-gb-2">{selectedStarter.toUpperCase()} · {coins} C</p>
             </div>
             <button type="button" className="pixel-box bg-gb-0 px-3 py-2 font-pixel text-[7px] text-gb-3" onClick={() => { setPhase('title'); setDialogue(''); setBattleState(null); }}>
               MENU
             </button>
           </header>
           <section className="relative mt-3 flex-1 px-3">
-            <PhaserGame phase={phase} selectedStarter={selectedStarter} onDialogue={handleDialogue} onEncounter={handleEncounter} />
+            <PhaserGame phase={phase} selectedStarter={selectedStarter} mapId={mapId} onDialogue={handleDialogue} onEncounter={handleEncounter} onMapChange={handleMapChange} />
             <div className="pointer-events-none absolute left-3 top-3 max-w-[180px] rounded-none border-4 border-gb-3 bg-gb-0/95 p-2">
               <p className="font-pixel text-[7px] leading-relaxed text-gb-3">{typedDialogue || 'Move with arrow keys or the touch D-pad.'}</p>
             </div>
             <div className="absolute bottom-3 left-3 right-3 flex justify-between gap-3">
-              <div className="pixel-box bg-gb-0 px-3 py-2 font-pixel text-[7px] text-gb-2">D-PAD · TOUCH READY</div>
+              <div className="pixel-box bg-gb-0 px-3 py-2 font-pixel text-[7px] text-gb-2">POTIONS · {potions}</div>
               <div className="pixel-box bg-gb-0 px-3 py-2 font-pixel text-[7px] text-gb-2">GRASS · 10% STEP</div>
             </div>
             <div className="absolute bottom-20 left-1/2 flex -translate-x-1/2 gap-2">
@@ -497,15 +672,15 @@ function TitleScreen() {
             <div className="mt-4 pixel-box bg-gb-0 p-3">
               {battleState.view === 'menu' ? (
                 <div className="grid gap-2">
-                  <button type="button" className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3" onClick={() => handleBattleMenu('fight')}>FIGHT</button>
-                  <button type="button" className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3" onClick={() => handleBattleMenu('bag')}>BAG</button>
-                  <button type="button" className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3" onClick={() => handleBattleMenu('monsters')}>MONSTERS</button>
-                  <button type="button" className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3" onClick={() => handleBattleMenu('run')}>RUN</button>
+                  <button type="button" disabled={battleState.turn === 'busy'} className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3 disabled:opacity-40" onClick={() => handleBattleMenu('fight')}>FIGHT</button>
+                  <button type="button" disabled={battleState.turn === 'busy'} className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3 disabled:opacity-40" onClick={() => handleBattleMenu('bag')}>BAG</button>
+                  <button type="button" disabled={battleState.turn === 'busy'} className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3 disabled:opacity-40" onClick={() => handleBattleMenu('monsters')}>MONSTERS</button>
+                  <button type="button" disabled={battleState.turn === 'busy'} className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3 disabled:opacity-40" onClick={() => handleBattleMenu('run')}>RUN</button>
                 </div>
               ) : (
                 <div className="grid gap-2">
                   {battleState.player.moves.map((move, index) => (
-                    <button key={move.name} type="button" className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3" onClick={() => resolveMove(index)}>{move.name}</button>
+                    <button key={move.name} type="button" disabled={battleState.turn === 'busy'} className="pixel-box bg-gb-0 px-2 py-2 text-left font-pixel text-[8px] text-gb-3 disabled:opacity-40" onClick={() => resolveMove(index)}>{move.name}</button>
                   ))}
                 </div>
               )}
@@ -534,6 +709,108 @@ function TitleScreen() {
     </main>
   );
 
+  const rewardContent = reward ? (
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
+      <div className="w-full max-w-[390px]">
+        <div className="screen-scanlines relative flex min-h-[720px] flex-col overflow-hidden border-8 border-gb-3 bg-gb-0">
+          <header className="px-5 pt-12 text-center">
+            <p className="font-pixel text-[14px] text-gb-3">VICTORY!</p>
+            <p className="mt-3 font-pixel text-[7px] leading-relaxed text-gb-2">{reward.foeName} WAS DEFEATED</p>
+          </header>
+          <section className="flex flex-1 flex-col justify-center px-5">
+            <div className="pixel-box bg-gb-0 p-4">
+              <p className="font-pixel text-[9px] text-gb-3">REWARDS</p>
+              <div className="mt-5 grid gap-4">
+                <div className="flex items-center justify-between border-b-4 border-gb-1 pb-3">
+                  <span className="font-pixel text-[8px] text-gb-2">EXPERIENCE</span>
+                  <span className="font-pixel text-[10px] text-gb-3">+{reward.xp} XP</span>
+                </div>
+                <div className="flex items-center justify-between border-b-4 border-gb-1 pb-3">
+                  <span className="font-pixel text-[8px] text-gb-2">COINS</span>
+                  <span className="font-pixel text-[10px] text-gb-3">+{reward.coins}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-pixel text-[8px] text-gb-2">TOTAL COINS</span>
+                  <span className="font-pixel text-[10px] text-gb-3">{coins}</span>
+                </div>
+              </div>
+              {reward.leveledUp && (
+                <p className="mt-5 border-4 border-gb-3 bg-gb-1 p-3 text-center font-pixel text-[9px] leading-relaxed text-gb-3">
+                  LEVEL UP!<br />NOW LEVEL {reward.level}
+                </p>
+              )}
+            </div>
+          </section>
+          <div className="px-5 pb-8">
+            <button type="button" onClick={continueAfterReward} className="pixel-box w-full bg-gb-0 px-3 py-4 text-center font-pixel text-[10px] text-gb-3">
+              CONTINUE ▶
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  ) : null;
+
+  const settingsContent = (
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
+      <div className="w-full max-w-[390px]">
+        <div className="screen-scanlines relative flex min-h-[720px] flex-col overflow-hidden border-8 border-gb-3 bg-gb-0">
+          <header className="px-5 pt-12 text-center">
+            <p className="font-pixel text-[14px] text-gb-3">SETTINGS</p>
+            <p className="mt-3 font-pixel text-[7px] text-gb-2">SOUND · SPEED · TEXT</p>
+          </header>
+          <section className="flex flex-1 flex-col justify-center gap-3 px-5">
+            <button type="button" onClick={() => setSoundEnabled((enabled) => !enabled)} className="pixel-box bg-gb-0 p-4 text-left font-pixel text-[9px] text-gb-3">
+              SOUND <span className="float-right">{soundEnabled ? 'ON' : 'OFF'}</span>
+            </button>
+            <div className="pixel-box bg-gb-0 p-4 font-pixel text-[9px] text-gb-3">
+              TEXT SPEED <span className="float-right">FAST</span>
+            </div>
+            <div className="pixel-box bg-gb-0 p-4 font-pixel text-[9px] leading-relaxed text-gb-2">
+              MOVE: ARROWS / WASD<br />CONFIRM: ENTER / Z<br />BACK: ESC / X
+            </div>
+          </section>
+          <div className="px-5 pb-8">
+            <button type="button" onClick={() => setPhase(returnPhase)} className="pixel-box w-full bg-gb-0 px-3 py-4 text-center font-pixel text-[10px] text-gb-3">
+              BACK ▶
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+
+  const partyContent = (
+    <main className="flex min-h-dvh items-center justify-center bg-[var(--shell)] p-3">
+      <div className="w-full max-w-[390px]">
+        <div className="screen-scanlines relative flex min-h-[720px] flex-col overflow-hidden border-8 border-gb-3 bg-gb-0">
+          <header className="px-5 pt-12 text-center">
+            <p className="font-pixel text-[14px] text-gb-3">TINGALS</p>
+            <p className="mt-3 font-pixel text-[7px] text-gb-2">YOUR ACTIVE PARTY</p>
+          </header>
+          <section className="flex flex-1 flex-col justify-center px-5">
+            <div className="pixel-box bg-gb-0 p-4">
+              <div className="flex items-center gap-4">
+                <PixelArt rows={critter} palette={palette} scale={5} />
+                <div className="flex-1">
+                  <p className="font-pixel text-[10px] text-gb-3">{selectedStarter}</p>
+                  <p className="mt-2 font-pixel text-[7px] text-gb-2">LV {playerMonster.level}</p>
+                  <p className="mt-2 font-pixel text-[7px] text-gb-2">HP {playerMonster.hp}/{playerMonster.maxHp}</p>
+                </div>
+              </div>
+            </div>
+            <p className="mt-4 text-center font-pixel text-[7px] leading-relaxed text-gb-2">Only one Tingal is currently registered.</p>
+          </section>
+          <div className="px-5 pb-8">
+            <button type="button" onClick={() => setPhase(returnPhase)} className="pixel-box w-full bg-gb-0 px-3 py-4 text-center font-pixel text-[10px] text-gb-3">
+              BACK ▶
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+  );
+
   return (
     <>
       {phase === 'title' && titleContent}
@@ -541,6 +818,9 @@ function TitleScreen() {
       {phase === 'overworld' && overworldContent}
       {phase === 'encounter' && encounterContent}
       {phase === 'battle' && battleContent}
+      {phase === 'reward' && rewardContent}
+      {phase === 'settings' && settingsContent}
+      {phase === 'party' && partyContent}
       {battleFlash && <div className="pointer-events-none fixed inset-0 z-50 bg-white/90" />}
     </>
   );

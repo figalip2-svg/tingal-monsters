@@ -1,5 +1,15 @@
 type SaveData = {
   selectedStarter?: string;
+  coins?: number;
+  mapId?: string;
+  potions?: number;
+  playerLevel?: number;
+  playerHp?: number;
+  playerMaxHp?: number;
+  playerAttack?: number;
+  playerDefense?: number;
+  playerXp?: number;
+  playerXpToNext?: number;
 };
 
 const STORAGE_KEY = 'tingal-save';

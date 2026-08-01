@@ -13,28 +13,39 @@ const PALETTE = {
   accent: '#2f4f3f',
 };
 
-const MAP_DATA = [
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,4,4,4,4,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-];
+type MapId = 'town' | 'route' | 'grove';
+
+function createMap(grassTiles: Array<[number, number]>, obstacles: Array<[number, number]>): number[][] {
+  const map: number[][] = Array.from({ length: MAP_HEIGHT }, (_, y) =>
+    Array.from({ length: MAP_WIDTH }, (_, x) => (x === 0 || y === 0 || x === MAP_WIDTH - 1 || y === MAP_HEIGHT - 1 ? 1 : 0)),
+  );
+  grassTiles.forEach(([x, y]) => { map[y][x] = 4; });
+  obstacles.forEach(([x, y]) => { map[y][x] = 1; });
+  map[10][0] = 0;
+  map[10][MAP_WIDTH - 1] = 0;
+  return map;
+}
+
+const MAPS: Record<MapId, number[][]> = {
+  town: createMap(
+    [[12,2],[13,2],[14,2],[15,2],[12,3],[13,3],[14,3],[15,3],[12,4],[13,4],[14,4],[15,4]],
+    [[5,5],[6,5],[5,6],[6,6],[10,14],[11,14],[10,15],[11,15]],
+  ),
+  route: createMap(
+    [[3,3],[4,3],[5,3],[3,4],[4,4],[5,4],[14,14],[15,14],[16,14],[14,15],[15,15],[16,15]],
+    [[8,6],[9,6],[10,6],[8,7],[10,7],[8,8],[9,8],[10,8]],
+  ),
+  grove: createMap(
+    [[4,12],[5,12],[6,12],[7,12],[4,13],[5,13],[6,13],[7,13],[14,4],[15,4],[14,5],[15,5]],
+    [[3,5],[4,5],[3,6],[4,6],[16,8],[17,8],[16,9],[17,9]],
+  ),
+};
+
+const MAP_NAMES: Record<MapId, string> = {
+  town: 'VERDANT TOWN',
+  route: 'SUNLIT ROUTE',
+  grove: 'MOSSHEART GROVE',
+};
 
 function isWalkable(value: number) {
   return value === 0 || value === 4;
@@ -45,9 +56,11 @@ export class OverworldScene extends Phaser.Scene {
   private npc!: Phaser.GameObjects.Rectangle;
   private playerTile = { x: 1, y: 1 };
   private npcTile = { x: 14, y: 8 };
-  private collisionLayer: number[][] = MAP_DATA;
+  private mapId: MapId = 'town';
+  private collisionLayer: number[][] = MAPS.town;
   private onDialogue?: (message: string) => void;
   private onEncounter?: (enemyName: string) => void;
+  private onMapChange?: (mapName: string) => void;
   private dialogueShown = false;
 
   constructor() {
@@ -57,6 +70,17 @@ export class OverworldScene extends Phaser.Scene {
   create() {
     this.onDialogue = this.registry.get('onDialogue');
     this.onEncounter = this.registry.get('onEncounter');
+    this.onMapChange = this.registry.get('onMapChange');
+    this.mapId = this.registry.get('mapId') ?? 'town';
+    this.collisionLayer = MAPS[this.mapId];
+    const spawnX = this.registry.get('spawnX') as number | undefined;
+    this.playerTile = spawnX !== undefined
+      ? { x: spawnX, y: 10 }
+      : this.mapId === 'town'
+        ? { x: 1, y: 1 }
+        : { x: this.mapId === 'route' ? 1 : 18, y: 10 };
+    this.npcTile = this.mapId === 'town' ? { x: 14, y: 8 } : { x: 10, y: 10 };
+    this.onMapChange?.(MAP_NAMES[this.mapId]);
 
     const graphics = this.add.graphics();
     graphics.fillStyle(Number(`0x${PALETTE.base.slice(1)}`), 1);
@@ -126,6 +150,14 @@ export class OverworldScene extends Phaser.Scene {
   private tryMove(dx: number, dy: number) {
     const nextX = this.playerTile.x + dx;
     const nextY = this.playerTile.y + dy;
+    if (nextY === 10 && nextX < 0) {
+      this.changeMap(this.mapId === 'grove' ? 'route' : 'town', MAP_WIDTH - 2);
+      return;
+    }
+    if (nextY === 10 && nextX >= MAP_WIDTH) {
+      this.changeMap(this.mapId === 'town' ? 'route' : 'grove', 1);
+      return;
+    }
     if (nextX < 0 || nextY < 0 || nextX >= MAP_WIDTH || nextY >= MAP_HEIGHT) {
       return;
     }
@@ -149,5 +181,11 @@ export class OverworldScene extends Phaser.Scene {
         this.onEncounter?.(encounters[Math.floor(Math.random() * encounters.length)]);
       }
     }
+  }
+
+  private changeMap(nextMap: MapId, spawnX: number) {
+    this.registry.set('mapId', nextMap);
+    this.registry.set('spawnX', spawnX);
+    this.scene.restart();
   }
 }

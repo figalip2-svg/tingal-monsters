@@ -5,15 +5,17 @@ import type Phaser from 'phaser';
 import { OverworldScene } from '@/game/scenes/OverworldScene';
 
 type PhaserGameProps = {
-  phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle';
+  phase: 'title' | 'starter' | 'overworld' | 'encounter' | 'battle' | 'reward' | 'party' | 'settings';
   selectedStarter: string;
+  mapId: string;
   onDialogue: (message: string) => void;
   onEncounter: (enemyName: string) => void;
+  onMapChange: (mapName: string) => void;
 };
 
 type PhaserModule = typeof import('phaser');
 
-export function PhaserGame({ phase, selectedStarter, onDialogue, onEncounter }: PhaserGameProps) {
+export function PhaserGame({ phase, selectedStarter, mapId, onDialogue, onEncounter, onMapChange }: PhaserGameProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const [phaserModule, setPhaserModule] = useState<PhaserModule | null>(null);
@@ -49,8 +51,10 @@ export function PhaserGame({ phase, selectedStarter, onDialogue, onEncounter }: 
 
     if (gameRef.current) {
       gameRef.current.registry.set('starterName', selectedStarter);
+      gameRef.current.registry.set('mapId', mapId);
       gameRef.current.registry.set('onDialogue', onDialogue);
       gameRef.current.registry.set('onEncounter', onEncounter);
+      gameRef.current.registry.set('onMapChange', onMapChange);
       if (phase === 'overworld') {
         gameRef.current.scene.stop('Overworld');
         gameRef.current.scene.start('Overworld');
@@ -78,8 +82,10 @@ export function PhaserGame({ phase, selectedStarter, onDialogue, onEncounter }: 
     });
 
     game.registry.set('starterName', selectedStarter);
+    game.registry.set('mapId', mapId);
     game.registry.set('onDialogue', onDialogue);
     game.registry.set('onEncounter', onEncounter);
+    game.registry.set('onMapChange', onMapChange);
 
     gameRef.current = game;
 
@@ -88,9 +94,9 @@ export function PhaserGame({ phase, selectedStarter, onDialogue, onEncounter }: 
       game.destroy(true);
       gameRef.current = null;
     };
-  }, [phaserModule, phase, selectedStarter, onDialogue, onEncounter]);
+  }, [phaserModule, phase, selectedStarter, mapId, onDialogue, onEncounter, onMapChange]);
 
-  if (phase === 'title' || phase === 'starter' || phase === 'encounter') {
+  if (phase === 'title' || phase === 'starter' || phase === 'encounter' || phase === 'reward' || phase === 'party' || phase === 'settings') {
     return null;
   }
 
