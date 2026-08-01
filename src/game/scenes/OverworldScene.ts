@@ -23,13 +23,16 @@ const routeMap = SIMPLE_MAP(
   [[3, 3], [4, 3], [5, 3], [3, 4], [4, 4], [5, 4], [14, 14], [15, 14], [16, 14], [14, 15], [15, 15], [16, 15]],
   [[8, 6], [9, 6], [10, 6], [8, 7], [10, 7], [8, 8], [9, 8], [10, 8]],
 );
-routeMap.tiles[0] = `${routeMap.tiles[0].slice(0, 10)}g${routeMap.tiles[0].slice(11)}`;
+routeMap.tiles[0] = `${routeMap.tiles[0].slice(0, 9)}ggg${routeMap.tiles[0].slice(12)}`;
+routeMap.tiles[1] = `${routeMap.tiles[1].slice(0, 9)}s.${routeMap.tiles[1].slice(11)}`;
+routeMap.tiles[2] = `${routeMap.tiles[2].slice(0, 9)}...${routeMap.tiles[2].slice(12)}`;
 
 const forestMap = SIMPLE_MAP(
   [[5,5],[6,5],[7,5],[8,6],[9,6],[10,6],[5,7],[6,7],[7,7],[12,12],[13,12]],
   [[9,9],[10,9],[11,9],[9,10],[11,10]],
 );
 forestMap.tiles[forestMap.height - 1] = `${forestMap.tiles[forestMap.height - 1].slice(0, 10)}g${forestMap.tiles[forestMap.height - 1].slice(11)}`;
+forestMap.tiles[forestMap.height - 2] = `${forestMap.tiles[forestMap.height - 2].slice(0, 10)}s${forestMap.tiles[forestMap.height - 2].slice(11)}`;
 
 const MAPS: Record<MapId, MapDefinition> = {
   town: { tiles: MAP, width: WIDTH, height: HEIGHT },
