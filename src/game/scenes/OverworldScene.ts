@@ -235,11 +235,21 @@ export class OverworldScene extends Phaser.Scene {
     }
 
     if (nextY === 10 && nextX < 0) {
-      this.changeMap(this.mapId === 'grove' ? 'route' : 'town', MAPS[this.mapId === 'town' ? 'route' : 'town'].width - 2);
+      // Moving left from the middle row: grove <-> route <-> town
+      if (this.mapId === 'grove') {
+        this.changeMap('route', MAPS['route'].width - 2);
+      } else {
+        this.changeMap('town', MAPS['town'].width - 2);
+      }
       return;
     }
     if (nextY === 10 && nextX >= this.map.width) {
-      this.changeMap(this.mapId === 'town' ? 'route' : 'grove', 1);
+      // Moving right from the middle row: town -> route -> grove
+      if (this.mapId === 'town') {
+        this.changeMap('route', 1);
+      } else {
+        this.changeMap('grove', 1);
+      }
       return;
     }
     if (nextX < 0 || nextY < 0 || nextX >= this.map.width || nextY >= this.map.height) return;
